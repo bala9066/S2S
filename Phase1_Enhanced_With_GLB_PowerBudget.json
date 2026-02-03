@@ -1,0 +1,772 @@
+{
+  "name": "Phase_1_Enhanced_GLB_PowerBudget",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345601",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "phase1-enhanced-hardware-pipeline"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// VALIDATE INPUT AND DETECT SYSTEM TYPE\n// Universal for all hardware systems\n// ==========================================\n\nconst chatMessage = $input.item.json.chatInput || $input.item.json.input || '';\n\n// Check if this is initial requirements or approval response\nconst isApproval = chatMessage.toLowerCase().includes('approve') || \n                   chatMessage.toLowerCase().includes('reject') ||\n                   chatMessage.toLowerCase().includes('modify');\n\nif (isApproval) {\n  // Handle approval - pass through\n  return {\n    json: {\n      is_approval: true,\n      approval_action: chatMessage.toLowerCase().includes('approve') ? 'approve' : \n                       chatMessage.toLowerCase().includes('reject') ? 'reject' : 'modify',\n      message: chatMessage\n    }\n  };\n}\n\n// Initial requirements input\nconst requirements = chatMessage.trim();\n\nif (!requirements || requirements.length < 30) {\n  throw new Error('❌ Requirements must be at least 30 characters.\\n\\nPlease provide detailed hardware design requirements.\\n\\nExample:\\n\"Design a 3-phase motor controller with TMS320F28379D DSP, 10kW output power, 48V DC input, 0-400Hz output frequency, Ethernet interface for monitoring, current sensing, and temperature protection.\"');\n}\n\n// Generate project name from requirements\nconst projectName = 'Project_' + Date.now();\n\n// Auto-detect system type\nconst reqLower = requirements.toLowerCase();\nlet systemType = 'Digital_Controller'; // default\nlet isRFSystem = false;\n\nif (reqLower.includes('rf') || reqLower.includes('wireless') || reqLower.includes('ghz') || \n    reqLower.includes('antenna') || reqLower.includes('transceiver') || reqLower.includes('frequency') ||\n    reqLower.includes('mhz') || reqLower.includes('transmit') || reqLower.includes('receiver')) {\n  systemType = 'RF_Wireless';\n  isRFSystem = true;\n} else if (reqLower.includes('motor') || reqLower.includes('inverter') || reqLower.includes('3-phase') || \n           reqLower.includes('bldc') || reqLower.includes('servo') || reqLower.includes('gate driver')) {\n  systemType = 'Motor_Control';\n} else if (reqLower.includes('power supply') || reqLower.includes('ac/dc') || reqLower.includes('dc/dc') || \n           reqLower.includes('rectifier') || reqLower.includes('buck') || reqLower.includes('boost')) {\n  systemType = 'Power_Electronics';\n} else if (reqLower.includes('sensor') || reqLower.includes('adc') || reqLower.includes('measurement') || \n           reqLower.includes('amplifier') || reqLower.includes('precision')) {\n  systemType = 'Sensor_System';\n} else if (reqLower.includes('plc') || reqLower.includes('industrial') || reqLower.includes('modbus') || \n           reqLower.includes('profibus') || reqLower.includes('fieldbus') || reqLower.includes('24v')) {\n  systemType = 'Industrial_Control';\n} else if (reqLower.includes('fpga') || reqLower.includes('xilinx') || reqLower.includes('altera') || \n           reqLower.includes('ddr') || reqLower.includes('ethernet') || reqLower.includes('mcu')) {\n  systemType = 'Digital_Controller';\n}\n\nconsole.log(`[PHASE 1] Detected System Type: ${systemType}`);\nconsole.log(`[PHASE 1] Is RF System: ${isRFSystem}`);\nconsole.log(`[PHASE 1] Requirements length: ${requirements.length} chars`);\n\nreturn {\n  json: {\n    is_approval: false,\n    requirements: requirements,\n    project_name: projectName,\n    system_type: systemType,\n    is_rf_system: isRFSystem,\n    timestamp: Date.now(),\n    phase: 1,\n    status: 'requirements_received'\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345602",
+      "name": "Validate Input & Detect Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_approval }}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345603",
+      "name": "Is This Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// BUILD AI PROMPT FOR REQUIREMENTS PARSING\n// ==========================================\n\nconst requirements = $json.requirements;\nconst systemType = $json.system_type;\nconst isRFSystem = $json.is_rf_system;\n\nconst prompt = `You are a hardware design expert. Parse these requirements and extract structured data.\n\nSYSTEM TYPE DETECTED: ${systemType}\nIS RF SYSTEM: ${isRFSystem}\nREQUIREMENTS:\n${requirements}\n\nExtract and return ONLY valid JSON (no markdown, no explanation):\n\n{\n  \"system_type\": \"${systemType}\",\n  \"is_rf_system\": ${isRFSystem},\n  \"primary_components\": {\n    \"processor\": {\n      \"type\": \"FPGA/MCU/DSP/CPU\",\n      \"specific_part\": \"part number if mentioned\",\n      \"required_features\": [\"features needed\"],\n      \"package\": \"package type\"\n    },\n    \"power\": {\n      \"input_voltage\": \"input voltage\",\n      \"output_power\": \"output power\",\n      \"rails_needed\": [\"list voltage rails like 3.3V, 1.8V, etc\"]\n    },\n    \"interfaces\": [\"Ethernet\", \"CAN\", \"USB\", \"SPI\", \"I2C\", etc]\n  },\n  \"rf_specifications\": ${isRFSystem ? '{\n    \"frequency\": \"center frequency\",\n    \"bandwidth\": \"bandwidth\",\n    \"tx_power\": \"transmit power\",\n    \"rx_sensitivity\": \"receive sensitivity\",\n    \"modulation\": \"modulation scheme\"\n  }' : 'null'},\n  \"specifications\": {},\n  \"key_components_needed\": [\n    {\"category\": \"processor/power/driver/interface\", \"description\": \"what's needed\", \"quantity\": 1}\n  ],\n  \"special_requirements\": [\"isolation\", \"EMI shielding\", etc],\n  \"certifications_needed\": [\"RoHS\", \"CE\", \"FCC\", etc],\n  \"environmental\": {\n    \"temperature_range\": \"range\",\n    \"protection_rating\": \"IP rating if needed\"\n  }\n}\n\nRULES:\n1. Be specific and technical\n2. Use standard units (V, A, W, Hz, dBm)\n3. Return ONLY JSON, no other text\n4. All fields must be present\n`;\n\nreturn {\n  json: {\n    ...($json),\n    ai_prompt: prompt,\n    task_complexity: 'high',\n    max_tokens: 3000\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345604",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345605",
+      "name": "AI: Parse Requirements",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// EXTRACT PARSED REQUIREMENTS FROM AI\n// ==========================================\n\nconst aiResponse = $input.item.json;\nlet parsedRequirements;\n\ntry {\n  // Extract text from AI Agent response\n  let content = '';\n  \n  // AI Agent returns 'output' field\n  if (aiResponse.output) {\n    content = aiResponse.output;\n  } else if (aiResponse.choices && aiResponse.choices[0]) {\n    content = aiResponse.choices[0].message?.content || '';\n  } else if (aiResponse.text) {\n    content = aiResponse.text;\n  } else if (typeof aiResponse === 'string') {\n    content = aiResponse;\n  }\n  \n  // If response is already an object\n  if (typeof content === 'object') {\n    parsedRequirements = content;\n  } else {\n    // Extract JSON from text response\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsedRequirements = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found in AI response');\n    }\n  }\n  \n  console.log('[AI] Parsed system type:', parsedRequirements.system_type);\n  console.log('[AI] Is RF system:', parsedRequirements.is_rf_system);\n  \n} catch (error) {\n  console.error('[AI] Parse error:', error);\n  // Return default structure on error\n  const validationData = $('Validate Input & Detect Type').item?.json || {};\n  parsedRequirements = {\n    system_type: validationData.system_type || 'Digital_Controller',\n    is_rf_system: validationData.is_rf_system || false,\n    primary_components: {\n      processor: { type: 'MCU', specific_part: 'STM32F4', required_features: ['GPIO', 'ADC', 'PWM'], package: 'LQFP' },\n      power: { input_voltage: '12V', output_power: '10W', rails_needed: ['3.3V', '5V'] },\n      interfaces: ['CAN', 'SPI', 'I2C']\n    },\n    rf_specifications: null,\n    specifications: {},\n    key_components_needed: [{ category: 'processor', description: 'Main MCU', quantity: 1 }],\n    special_requirements: [],\n    certifications_needed: ['RoHS'],\n    environmental: { temperature_range: '-40 to 85C', protection_rating: 'IP20' }\n  };\n}\n\nconst validationData = $('Validate Input & Detect Type').item?.json || {};\n\nreturn {\n  json: {\n    parsed_requirements: parsedRequirements,\n    original_requirements: validationData.requirements || '',\n    project_name: validationData.project_name || 'Hardware_Project_' + Date.now(),\n    system_type: parsedRequirements.system_type || validationData.system_type || 'Digital_Controller',\n    is_rf_system: parsedRequirements.is_rf_system || validationData.is_rf_system || false,\n    timestamp: validationData.timestamp || Date.now()\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345606",
+      "name": "Extract Parsed Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// GENERATE UNIVERSAL BLOCK DIAGRAM\n// ==========================================\n\nconst parsed = $json.parsed_requirements || {};\nconst projectName = $json.project_name || 'Hardware_Project';\nconst systemType = $json.system_type || 'Digital_Controller';\nconst isRFSystem = $json.is_rf_system || false;\n\nconst diagram = {\n  version: '1.0',\n  type: 'hardware_block_diagram',\n  metadata: {\n    project: projectName,\n    system_type: systemType,\n    is_rf_system: isRFSystem,\n    created: new Date().toISOString()\n  },\n  blocks: [],\n  connections: []\n};\n\nlet blockId = 1;\nconst blockMap = {};\n\n// PROCESSOR BLOCK\nconst proc = parsed.primary_components?.processor || { type: 'MCU' };\nconst procBlock = {\n  id: `B${blockId}`,\n  type: 'processor',\n  label: proc.specific_part || proc.type || 'Processor',\n  position: {x: 500, y: 300}\n};\nblockMap.processor = procBlock.id;\ndiagram.blocks.push(procBlock);\nblockId++;\n\n// RF FRONTEND (if RF system)\nif (isRFSystem && parsed.rf_specifications) {\n  const rfBlock = {\n    id: `B${blockId}`,\n    type: 'rf_frontend',\n    label: `RF Front-End ${parsed.rf_specifications.frequency || ''}`,\n    position: {x: 500, y: 150}\n  };\n  blockMap.rf_frontend = rfBlock.id;\n  diagram.blocks.push(rfBlock);\n  diagram.connections.push({ from: rfBlock.id, to: blockMap.processor, label: 'RF Data' });\n  blockId++;\n  \n  // Antenna\n  const antennaBlock = {\n    id: `B${blockId}`,\n    type: 'antenna',\n    label: 'Antenna',\n    position: {x: 500, y: 50}\n  };\n  diagram.blocks.push(antennaBlock);\n  diagram.connections.push({ from: antennaBlock.id, to: blockMap.rf_frontend, label: 'RF Signal' });\n  blockId++;\n}\n\n// POWER BLOCKS\nconst power = parsed.primary_components?.power || { input_voltage: '12V', rails_needed: ['3.3V'] };\nconst inputBlock = {\n  id: `B${blockId}`,\n  type: 'power_input',\n  label: `Input ${power.input_voltage || '12V'}`,\n  position: {x: 100, y: 100}\n};\nblockMap.input_power = inputBlock.id;\ndiagram.blocks.push(inputBlock);\nblockId++;\n\n// Voltage regulators\nconst rails = power.rails_needed || ['3.3V'];\nrails.forEach((rail, i) => {\n  const railBlock = {\n    id: `B${blockId}`,\n    type: 'power_regulator',\n    label: `Regulator ${rail}`,\n    position: {x: 100, y: 200 + i*80}\n  };\n  diagram.blocks.push(railBlock);\n  diagram.connections.push({ from: blockMap.input_power, to: railBlock.id, label: power.input_voltage });\n  diagram.connections.push({ from: railBlock.id, to: blockMap.processor, label: rail });\n  if (isRFSystem && blockMap.rf_frontend) {\n    diagram.connections.push({ from: railBlock.id, to: blockMap.rf_frontend, label: rail });\n  }\n  blockId++;\n});\n\n// INTERFACE BLOCKS\nconst interfaces = parsed.primary_components?.interfaces || ['SPI', 'I2C'];\ninterfaces.forEach((iface, i) => {\n  const ifaceBlock = {\n    id: `B${blockId}`,\n    type: 'interface',\n    label: iface,\n    position: {x: 800, y: 150 + i*80}\n  };\n  diagram.blocks.push(ifaceBlock);\n  diagram.connections.push({ from: blockMap.processor, to: ifaceBlock.id, label: iface });\n  blockId++;\n});\n\n// Generate ASCII diagram with safe string operations\nconst safeName = (projectName || 'Project').substring(0, 20).padEnd(20);\nconst safeType = (systemType || 'Unknown').padEnd(23);\nconst rfIndicator = isRFSystem ? '📡 RF/Wireless' : '';\n\nconst asciiDiagram = `\n╔════════════════════════════════════════╗\n║  BLOCK DIAGRAM: ${safeName}  ║\n╠════════════════════════════════════════╣\n║  System Type: ${safeType}║\n║  ${rfIndicator.padEnd(36)}║\n║  Total Blocks: ${diagram.blocks.length.toString().padEnd(22)}║\n║  Connections: ${diagram.connections.length.toString().padEnd(23)}║\n╚════════════════════════════════════════╝\n\nMAIN COMPONENTS:\n${diagram.blocks.map((b, i) => `  ${i+1}. ${b.label} (${b.type})`).join('\\n')}\n\nCONNECTIONS:\n${diagram.connections.slice(0, 10).map((c, i) => `  ${i+1}. ${diagram.blocks.find(b=>b.id===c.from)?.label} → ${diagram.blocks.find(b=>b.id===c.to)?.label}`).join('\\n')}\n${diagram.connections.length > 10 ? `... and ${diagram.connections.length - 10} more connections` : ''}\n`;\n\nreturn {\n  json: {\n    ...($json),\n    block_diagram: diagram,\n    ascii_diagram: asciiDiagram,\n    awaiting_approval: true\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345607",
+      "name": "Generate Block Diagram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Show diagram and request approval\nconst diagram = $json.ascii_diagram;\nconst projectName = $json.project_name;\nconst isRFSystem = $json.is_rf_system;\n\nconst rfNote = isRFSystem ? '\\n\\n🔬 **RF System Detected** - Will generate GLB (Gain Loss Budget) after component selection.\\n' : '';\n\nreturn {\n  json: {\n    output: `📋 **BLOCK DIAGRAM GENERATED**\\n\\n${diagram}${rfNote}\\n✅ **Please review the block diagram above.**\\n\\n**Options:**\\n- Type **\"APPROVE\"** to continue to component selection\\n- Type **\"REJECT: <reason>\"** to request changes\\n\\nWaiting for your approval...`,\n    ...($json)\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345608",
+      "name": "Show Diagram & Wait Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// HANDLE APPROVAL RESPONSE\n// ==========================================\n\nconst approvalMsg = $json.approval_action || '';\n\nif (approvalMsg !== 'approve') {\n  throw new Error('❌ Workflow stopped. User did not approve block diagram.\\n\\nPlease start over with updated requirements.');\n}\n\nconsole.log('[APPROVAL] Block diagram approved. Continuing to component search...');\n\nreturn {\n  json: {\n    approved: true,\n    block_diagram: $('Generate Block Diagram').item.json.block_diagram,\n    parsed_requirements: $('Extract Parsed Data').item.json.parsed_requirements,\n    project_name: $('Extract Parsed Data').item.json.project_name,\n    system_type: $('Extract Parsed Data').item.json.system_type,\n    is_rf_system: $('Extract Parsed Data').item.json.is_rf_system\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345609",
+      "name": "Handle Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// BUILD COMPONENT SEARCH QUERIES\n// ==========================================\n\nconst parsed = $json.parsed_requirements;\nconst systemType = $json.system_type;\nconst isRFSystem = $json.is_rf_system;\nconst searches = [];\n\n// Processor search\nif (parsed.primary_components?.processor) {\n  const proc = parsed.primary_components.processor;\n  searches.push({\n    category: 'processor',\n    search_term: proc.specific_part || proc.type || 'MCU',\n    priority: 1\n  });\n}\n\n// RF components (if RF system)\nif (isRFSystem && parsed.rf_specifications) {\n  searches.push({\n    category: 'rf_transceiver',\n    search_term: `RF transceiver ${parsed.rf_specifications.frequency || ''} ${parsed.rf_specifications.modulation || ''}`,\n    priority: 1\n  });\n  \n  searches.push({\n    category: 'rf_amplifier',\n    search_term: `RF power amplifier ${parsed.rf_specifications.tx_power || ''}`,\n    priority: 2\n  });\n  \n  searches.push({\n    category: 'rf_filter',\n    search_term: `RF filter ${parsed.rf_specifications.frequency || ''}`,\n    priority: 2\n  });\n}\n\n// Power regulators\nif (parsed.primary_components?.power) {\n  const rails = parsed.primary_components.power.rails_needed || ['3.3V'];\n  rails.forEach(rail => {\n    searches.push({\n      category: 'power_regulator',\n      search_term: `DC-DC converter ${rail}`,\n      priority: 2\n    });\n  });\n}\n\n// Interface ICs\nif (parsed.primary_components?.interfaces) {\n  parsed.primary_components.interfaces.slice(0, 3).forEach(iface => {\n    searches.push({\n      category: 'interface',\n      search_term: `${iface} transceiver IC`,\n      priority: 3\n    });\n  });\n}\n\nconsole.log(`[SEARCH] Generated ${searches.length} component searches`);\n\n// Return array for split in batches\nreturn searches.map(s => ({\n  json: {\n    ...s,\n    project_name: $json.project_name,\n    system_type: systemType,\n    is_rf_system: isRFSystem\n  }\n}));"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345610",
+      "name": "Build Component Searches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 3,
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345611",
+      "name": "Split Searches (3 per batch)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1240,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://playwright:8000/api/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345612",
+      "name": "Search Components (Real)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        500
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345613",
+      "name": "Aggregate All Components",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// PREPARE COMPONENT RECOMMENDATIONS\n// ==========================================\n\nconst allResults = $input.all();\nconst allComponents = [];\n\nallResults.forEach(result => {\n  if (result.json.components) {\n    allComponents.push(...result.json.components);\n  }\n});\n\nconst isRFSystem = $('Handle Approval').item.json.is_rf_system || false;\n\n// Build recommendation prompt\nconst prompt = `Analyze these component options and recommend the best choice for each category.\n\n${isRFSystem ? '⚠️ This is an RF/Wireless system - prioritize RF performance, noise figure, and linearity.\\n\\n' : ''}\nComponents found: ${allComponents.length}\n\n${allComponents.slice(0, 15).map((c, i) => `${i+1}. ${c.part_number} - ${c.description} - ${c.price || 'N/A'}`).join('\\n')}\n\nFor each category, recommend ONE component with brief rationale (1 sentence).\n\nReturn JSON:\n{\n  \"recommendations\": [\n    {\n      \"category\": \"processor\",\n      \"part_number\": \"XXX\",\n      \"rationale\": \"Best balance of features and price\"\n    }\n  ]\n}`;\n\nreturn {\n  json: {\n    all_components: allComponents,\n    component_count: allComponents.length,\n    ai_prompt: prompt,\n    max_tokens: 2000,\n    is_rf_system: isRFSystem\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345614",
+      "name": "Prepare Component Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345615",
+      "name": "AI: Recommend Components",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2040,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// GENERATE BOM\n// ==========================================\n\nconst components = $('Prepare Component Recommendations').item.json.all_components;\nconst projectName = $('Handle Approval').item.json.project_name || 'Hardware_Project';\nconst systemType = $('Handle Approval').item.json.system_type || 'Digital_Controller';\nconst isRFSystem = $('Handle Approval').item.json.is_rf_system || false;\n\n// Calculate total cost\nlet totalCost = 0;\ncomponents.forEach(comp => {\n  const priceMatch = (comp.price || '$0').toString().match(/\\$?([0-9.]+)/);\n  if (priceMatch) {\n    totalCost += parseFloat(priceMatch[1]);\n  }\n});\n\n// Generate BOM summary\nconst bomSummary = `\n╔══════════════════════════════════════╗\n║         BILL OF MATERIALS            ║\n╠══════════════════════════════════════╣\n║  Project: ${projectName.substring(0, 24).padEnd(24)}║\n║  System: ${systemType.substring(0, 26).padEnd(26)}║\n║  Total Components: ${components.length.toString().padEnd(17)}║\n║  Estimated Cost: $${totalCost.toFixed(2).padEnd(15)}║\n╚══════════════════════════════════════╝\n\nTOP COMPONENTS:\n${components.slice(0, 10).map((c, i) => \n  `${i+1}. ${(c.part_number || 'Unknown').padEnd(20)} ${(c.price || '$0.00').toString().padStart(10)}`\n).join('\\n')}\n${components.length > 10 ? `\\n... and ${components.length - 10} more components` : ''}\n`;\n\nreturn {\n  json: {\n    project_name: projectName,\n    system_type: systemType,\n    is_rf_system: isRFSystem,\n    bom_summary: bomSummary,\n    total_components: components.length,\n    total_cost: totalCost,\n    components: components,\n    parsed_requirements: $('Handle Approval').item.json.parsed_requirements,\n    block_diagram: $('Handle Approval').item.json.block_diagram\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345616",
+      "name": "Generate BOM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_rf_system }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345618",
+      "name": "Is RF System?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// BUILD GLB GENERATION PROMPT\n// For RF systems only\n// ==========================================\n\nconst parsed = $json.parsed_requirements;\nconst rfSpecs = parsed.rf_specifications || {};\nconst components = $json.components || [];\nconst blockDiagram = $json.block_diagram || {};\n\nconst prompt = `You are an RF systems engineer. Generate a Gain Loss Budget (GLB) for this RF system.\n\nSYSTEM SPECIFICATIONS:\n- Frequency: ${rfSpecs.frequency || 'Not specified'}\n- TX Power: ${rfSpecs.tx_power || 'Not specified'}\n- RX Sensitivity: ${rfSpecs.rx_sensitivity || 'Not specified'}\n- Modulation: ${rfSpecs.modulation || 'Not specified'}\n\nBLOCK DIAGRAM:\n${JSON.stringify(blockDiagram, null, 2)}\n\nCOMPONENTS SELECTED:\n${components.slice(0, 10).map(c => `- ${c.part_number}: ${c.description}`).join('\\n')}\n\nGenerate a detailed GLB analysis. Return JSON:\n\n{\n  \"tx_chain\": [\n    {\"stage\": \"PA\", \"gain_db\": 30, \"noise_figure_db\": 1, \"output_power_dbm\": 20},\n    {\"stage\": \"Filter\", \"gain_db\": -2, \"noise_figure_db\": 2, \"output_power_dbm\": 18}\n  ],\n  \"rx_chain\": [\n    {\"stage\": \"LNA\", \"gain_db\": 15, \"noise_figure_db\": 1.5, \"output_power_dbm\": -70},\n    {\"stage\": \"Mixer\", \"gain_db\": -8, \"noise_figure_db\": 10, \"output_power_dbm\": -78}\n  ],\n  \"link_budget\": {\n    \"tx_power_dbm\": 20,\n    \"path_loss_db\": 80,\n    \"rx_sensitivity_dbm\": -95,\n    \"margin_db\": 15\n  },\n  \"summary\": \"Brief analysis of the GLB\"\n}\n\nRULES:\n1. Use realistic RF component specs\n2. Calculate cascaded noise figure\n3. Verify link budget closes\n4. Highlight any issues\n`;\n\nreturn {\n  json: {\n    ...($json),\n    glb_ai_prompt: prompt,\n    max_tokens: 3000\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345619",
+      "name": "Build GLB Prompt (RF Only)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.glb_ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345620",
+      "name": "AI: Generate GLB",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2840,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// EXTRACT GLB FROM AI RESPONSE\n// ==========================================\n\nconst aiResponse = $input.item.json;\nlet glbData;\n\ntry {\n  let content = '';\n  \n  if (aiResponse.output) {\n    content = aiResponse.output;\n  } else if (aiResponse.choices && aiResponse.choices[0]) {\n    content = aiResponse.choices[0].message?.content || '';\n  } else if (typeof aiResponse === 'string') {\n    content = aiResponse;\n  }\n  \n  if (typeof content === 'object') {\n    glbData = content;\n  } else {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      glbData = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found in GLB response');\n    }\n  }\n  \n  console.log('[GLB] Generated successfully');\n  \n} catch (error) {\n  console.error('[GLB] Parse error:', error);\n  glbData = {\n    tx_chain: [{stage: 'PA', gain_db: 30, output_power_dbm: 20}],\n    rx_chain: [{stage: 'LNA', gain_db: 15, noise_figure_db: 1.5}],\n    link_budget: {tx_power_dbm: 20, path_loss_db: 80, rx_sensitivity_dbm: -95, margin_db: 15},\n    summary: 'GLB generation failed - using default values'\n  };\n}\n\n// Format GLB summary\nconst glbSummary = `\n╔════════════════════════════════════════╗\n║      GAIN LOSS BUDGET (GLB)            ║\n╠════════════════════════════════════════╣\n\nTX CHAIN:\n${glbData.tx_chain.map((s, i) => `  ${i+1}. ${s.stage}: Gain=${s.gain_db}dB, Output=${s.output_power_dbm}dBm`).join('\\n')}\n\nRX CHAIN:\n${glbData.rx_chain.map((s, i) => `  ${i+1}. ${s.stage}: Gain=${s.gain_db}dB, NF=${s.noise_figure_db}dB`).join('\\n')}\n\nLINK BUDGET:\n  TX Power: ${glbData.link_budget.tx_power_dbm} dBm\n  Path Loss: ${glbData.link_budget.path_loss_db} dB\n  RX Sensitivity: ${glbData.link_budget.rx_sensitivity_dbm} dBm\n  Margin: ${glbData.link_budget.margin_db} dB\n\nSUMMARY:\n${glbData.summary}\n\n╚════════════════════════════════════════╝\n`;\n\nconst bomData = $('Generate BOM').item.json;\n\nreturn {\n  json: {\n    ...bomData,\n    glb_data: glbData,\n    glb_summary: glbSummary,\n    has_glb: true\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345621",
+      "name": "Extract GLB Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// GENERATE POWER BUDGET (UNIVERSAL)\n// For all system types\n// ==========================================\n\nconst components = $json.components || [];\nconst bomData = $('Generate BOM').item.json;\nconst parsed = bomData.parsed_requirements || {};\nconst power = parsed.primary_components?.power || {};\n\nconst prompt = `You are a hardware power systems engineer. Generate a Power Consumption Budget for this system.\n\nSYSTEM POWER SPECIFICATIONS:\n- Input Voltage: ${power.input_voltage || 'Not specified'}\n- Output Power: ${power.output_power || 'Not specified'}\n- Voltage Rails: ${(power.rails_needed || []).join(', ')}\n\nCOMPONENTS:\n${components.slice(0, 15).map(c => `- ${c.part_number}: ${c.description}`).join('\\n')}\n\nAnalyze power consumption and generate a power budget. Return JSON:\n\n{\n  \"components\": [\n    {\"part\": \"processor\", \"voltage_rail\": \"3.3V\", \"typical_current_ma\": 150, \"max_current_ma\": 200, \"power_mw\": 495},\n    {\"part\": \"transceiver\", \"voltage_rail\": \"3.3V\", \"typical_current_ma\": 80, \"max_current_ma\": 120, \"power_mw\": 264}\n  ],\n  \"rails\": [\n    {\"voltage\": \"3.3V\", \"total_current_ma\": 230, \"total_power_w\": 0.759, \"regulator_efficiency\": 0.85, \"input_power_w\": 0.893}\n  ],\n  \"total_power\": {\n    \"typical_w\": 2.5,\n    \"max_w\": 3.5,\n    \"thermal_dissipation_w\": 0.8\n  },\n  \"thermal_analysis\": {\n    \"ambient_temp_c\": 25,\n    \"max_junction_temp_c\": 85,\n    \"heat_sink_required\": false,\n    \"cooling_method\": \"natural convection\"\n  },\n  \"battery_life\": {\n    \"battery_capacity_mah\": 2000,\n    \"runtime_hours\": 24,\n    \"note\": \"Estimated for typical load\"\n  },\n  \"summary\": \"Brief power budget analysis\"\n}\n\nRULES:\n1. Be conservative with current estimates\n2. Calculate regulator losses\n3. Consider thermal constraints\n4. Suggest cooling if needed\n`;\n\nreturn {\n  json: {\n    ...($json),\n    power_budget_ai_prompt: prompt,\n    max_tokens: 3000\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345622",
+      "name": "Build Power Budget Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.power_budget_ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345623",
+      "name": "AI: Generate Power Budget",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2840,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// EXTRACT POWER BUDGET FROM AI\n// ==========================================\n\nconst aiResponse = $input.item.json;\nlet powerBudget;\n\ntry {\n  let content = '';\n  \n  if (aiResponse.output) {\n    content = aiResponse.output;\n  } else if (aiResponse.choices && aiResponse.choices[0]) {\n    content = aiResponse.choices[0].message?.content || '';\n  } else if (typeof aiResponse === 'string') {\n    content = aiResponse;\n  }\n  \n  if (typeof content === 'object') {\n    powerBudget = content;\n  } else {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      powerBudget = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found in power budget response');\n    }\n  }\n  \n  console.log('[POWER] Budget generated successfully');\n  \n} catch (error) {\n  console.error('[POWER] Parse error:', error);\n  powerBudget = {\n    components: [{part: 'processor', voltage_rail: '3.3V', typical_current_ma: 150, power_mw: 495}],\n    rails: [{voltage: '3.3V', total_current_ma: 150, total_power_w: 0.5}],\n    total_power: {typical_w: 2.0, max_w: 3.0, thermal_dissipation_w: 0.5},\n    thermal_analysis: {heat_sink_required: false, cooling_method: 'natural convection'},\n    summary: 'Power budget generation failed - using default values'\n  };\n}\n\n// Format power budget summary\nconst powerSummary = `\n╔════════════════════════════════════════╗\n║      POWER CONSUMPTION BUDGET          ║\n╠════════════════════════════════════════╣\n\nVOLTAGE RAILS:\n${powerBudget.rails.map((r, i) => `  ${i+1}. ${r.voltage}: ${r.total_current_ma}mA (${r.total_power_w.toFixed(2)}W)`).join('\\n')}\n\nTOTAL POWER:\n  Typical: ${powerBudget.total_power.typical_w.toFixed(2)} W\n  Maximum: ${powerBudget.total_power.max_w.toFixed(2)} W\n  Thermal Dissipation: ${powerBudget.total_power.thermal_dissipation_w.toFixed(2)} W\n\nTHERMAL ANALYSIS:\n  Heat Sink Required: ${powerBudget.thermal_analysis.heat_sink_required ? 'Yes' : 'No'}\n  Cooling Method: ${powerBudget.thermal_analysis.cooling_method}\n${powerBudget.battery_life ? `\nBATTERY LIFE:\n  Capacity: ${powerBudget.battery_life.battery_capacity_mah}mAh\n  Runtime: ${powerBudget.battery_life.runtime_hours}h` : ''}\n\nSUMMARY:\n${powerBudget.summary}\n\n╚════════════════════════════════════════╝\n`;\n\n// Merge with previous data (could be from GLB path or direct from BOM)\nconst previousData = $input.item.json;\n\nreturn {\n  json: {\n    ...previousData,\n    power_budget: powerBudget,\n    power_summary: powerSummary,\n    has_power_budget: true,\n    phase_1_complete: true\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345624",
+      "name": "Extract Power Budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// SHOW ENHANCED RESULTS\n// ==========================================\n\nconst bomSummary = $json.bom_summary || '';\nconst glbSummary = $json.glb_summary || '';\nconst powerSummary = $json.power_summary || '';\nconst hasGLB = $json.has_glb || false;\nconst hasPowerBudget = $json.has_power_budget || false;\nconst isRFSystem = $json.is_rf_system || false;\n\nlet output = `✅ **PHASE 1 COMPLETE**\\n\\n${bomSummary}`;\n\nif (hasGLB && isRFSystem) {\n  output += `\\n\\n${glbSummary}`;\n}\n\nif (hasPowerBudget) {\n  output += `\\n\\n${powerSummary}`;\n}\n\noutput += `\\n\\n📦 **Next Steps:**\\n- Phase 2: Generate HRS Document (50-70 pages)\\n- Phase 3: Compliance validation (RoHS, REACH, FCC${isRFSystem ? ', CE RED' : ', CE'})\\n- Phase 4: Netlist generation\\n\\nWould you like to continue to Phase 2?`;\n\nreturn {\n  json: {\n    output: output,\n    ...($json)\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345625",
+      "name": "Show Enhanced Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-5-20250929",
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "anthropic-model-parse",
+      "name": "Claude Model (Parse)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        400
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "1",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-5-20250929",
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "anthropic-model-recommend",
+      "name": "Claude Model (Recommend)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.1,
+      "position": [
+        2040,
+        600
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "1",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-5-20250929",
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "anthropic-model-glb",
+      "name": "Claude Model (GLB)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.1,
+      "position": [
+        2840,
+        500
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "1",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-4-5-20250929",
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "anthropic-model-power",
+      "name": "Claude Model (Power)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.1,
+      "position": [
+        2840,
+        700
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "1",
+          "name": "Anthropic API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input & Detect Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input & Detect Type": {
+      "main": [
+        [
+          {
+            "node": "Is This Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is This Approval?": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Parse Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Parse Requirements": {
+      "main": [
+        [
+          {
+            "node": "Extract Parsed Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parsed Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Block Diagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Block Diagram": {
+      "main": [
+        [
+          {
+            "node": "Show Diagram & Wait Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show Diagram & Wait Approval": {
+      "main": [
+        [
+          {
+            "node": "Chat Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Approval": {
+      "main": [
+        [
+          {
+            "node": "Build Component Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Component Searches": {
+      "main": [
+        [
+          {
+            "node": "Split Searches (3 per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Searches (3 per batch)": {
+      "main": [
+        [
+          {
+            "node": "Search Components (Real)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Components (Real)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate All Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Components": {
+      "main": [
+        [
+          {
+            "node": "Prepare Component Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Component Recommendations": {
+      "main": [
+        [
+          {
+            "node": "AI: Recommend Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Recommend Components": {
+      "main": [
+        [
+          {
+            "node": "Generate BOM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate BOM": {
+      "main": [
+        [
+          {
+            "node": "Is RF System?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is RF System?": {
+      "main": [
+        [
+          {
+            "node": "Build GLB Prompt (RF Only)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Power Budget Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build GLB Prompt (RF Only)": {
+      "main": [
+        [
+          {
+            "node": "AI: Generate GLB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Generate GLB": {
+      "main": [
+        [
+          {
+            "node": "Extract GLB Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract GLB Data": {
+      "main": [
+        [
+          {
+            "node": "Build Power Budget Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Power Budget Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Generate Power Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Generate Power Budget": {
+      "main": [
+        [
+          {
+            "node": "Extract Power Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Power Budget": {
+      "main": [
+        [
+          {
+            "node": "Show Enhanced Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model (Parse)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Parse Requirements",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model (Recommend)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Recommend Components",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model (GLB)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Generate GLB",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model (Power)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Generate Power Budget",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    "hardware-pipeline",
+    "phase-1-enhanced",
+    "glb",
+    "power-budget",
+    "universal"
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-03T00:00:00.000Z",
+  "versionId": "2.1"
+}
