@@ -1,0 +1,99 @@
+# Hardware Pipeline - .gitignore
+
+# Environment variables
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Playwright
+/ms-playwright/
+.playwright/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+*.log
+
+# Project specific
+outputs/
+!outputs/.gitkeep
+component_cache/
+!component_cache/.gitkeep
+workflows/
+!workflows/.gitkeep
+playwright_scripts/*.tmp
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# n8n
+.n8n/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.bak
+*.swp
+*~
+
+# Test outputs
+test-results/
+coverage/
+.coverage
+htmlcov/
+
+# API keys and secrets (double-check!)
+*secret*
+*key*
+*token*
+!.env.example
