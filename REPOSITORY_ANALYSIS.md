@@ -332,7 +332,7 @@ scrape_components() → Orchestrates parallel scraping
 
 **Phase 7 (FPGA Implementation - Semi-Automated):**
 - **RDT (Register Description Table)** - Prepared by FPGA team based on GLR and schematic
-- **PSQ (Product Specification Questionnaire)** - Prepared by FPGA team based on GLR and schematic
+- **PSQ (Programming Sequence)** - Prepared by FPGA team based on GLR and schematic
 - Engineers write Verilog/VHDL based on RDT and PSQ
 - Future HDL auto-generation planned
 
@@ -1034,7 +1034,7 @@ The Hardware Pipeline project demonstrates:
 - **HRS** - Hardware Requirements Specification
 - **MR** - Merge Request
 - **NRND** - Not Recommended for New Designs
-- **PSQ** - Product Specification Questionnaire
+- **PSQ** - Programming Sequence
 - **RDT** - Register Description Table
 - **ROI** - Return on Investment
 - **SDD** - Software Design Document
