@@ -310,12 +310,15 @@ scrape_components() → Orchestrates parallel scraping
 
 **Phase 1-4 (Automated - ~4 minutes):**
 1. Requirements capture via natural language
-2. AI-powered component selection
-3. Block diagram generation
-4. BOM creation with pricing
-5. Hardware Requirements Specification (HRS) generation
-6. Compliance validation (RoHS, REACH, FCC, CE)
-7. Logical netlist generation
+2. Block diagram generation (PNG/draw.io format for visual verification)
+3. **User Approval Required** - Visual verification of block diagram before proceeding
+4. AI-powered component selection (post-approval)
+5. BOM creation with pricing
+6. **GLB (Gain Loss Budget)** - For RF systems only
+7. **Power Consumption Analysis** - For RF systems only
+8. Hardware Requirements Specification (HRS) generation
+9. Compliance validation (RoHS, REACH, FCC, CE)
+10. Logical netlist generation
 
 **Phase 5 (Manual - User PCB Design):**
 - Out of scope for Phase 1
@@ -327,44 +330,129 @@ scrape_components() → Orchestrates parallel scraping
 - I/O specifications for FPGA interface
 - Voltage level translation requirements
 
-**Phase 7 (Manual - FPGA Implementation):**
-- Out of scope for Phase 1
-- Engineers write Verilog/VHDL
-- Register map creation
+**Phase 7 (FPGA Implementation - Semi-Automated):**
+- **RDT (Register Description Table)** - Prepared by FPGA team based on GLR and schematic
+- **PSQ (Product Specification Questionnaire)** - Prepared by FPGA team based on GLR and schematic
+- Engineers write Verilog/VHDL based on RDT and PSQ
 - Future HDL auto-generation planned
 
 **Phase 8 (Automated - ~60 seconds):**
-- C/C++ driver generation
+- **SRS (Software Requirements Specification)** - Generated based on RDT, PSQ, and HRS
+- **SDD (Software Design Document)** - Generated based on RDT, PSQ, and HRS
+- C/C++ driver generation based on RDT and PSQ
 - Qt GUI application
 - Test suite creation
 - **Automated code review** (MISRA-C, security scan)
-- **Git integration** (auto-commit with AI messages)
+- **Manual MR Review Gate** - Review required before push for every Merge Request
+- **Git integration** (push after MR approval)
 - Documentation generation
 
 ### 4.2 AI Integration Points
 
 **Claude API Usage:**
 1. Requirements parsing and understanding
-2. Component recommendation logic
-3. Block diagram generation
-4. Specification document writing
-5. Netlist connectivity inference
-6. GLR I/O specification
-7. Code generation (C/C++, Qt)
-8. Code review and quality scoring
-9. Git commit message generation
+2. Block diagram generation (PNG/draw.io export)
+3. Component recommendation logic (post-approval)
+4. GLB (Gain Loss Budget) calculation for RF systems
+5. Power consumption analysis for RF systems
+6. Specification document writing (HRS)
+7. Netlist connectivity inference
+8. GLR I/O specification
+9. SRS (Software Requirements Specification) generation
+10. SDD (Software Design Document) generation
+11. Code generation (C/C++, Qt) based on RDT/PSQ
+12. Code review and quality scoring
+13. Git commit message generation (for approved MRs)
 
 **Estimated API Costs:**
 - Per project run: ~100K-200K tokens
 - Annual usage (100 projects): ~$2,500-$3,000
 - Within budget of ₹2.5L/year
 
-### 4.3 Data Flow
+### 4.3 Approval Gates and Quality Control
+
+The workflow implements **mandatory human approval gates** to ensure quality and correctness:
+
+**Gate 1: Block Diagram Approval**
+- **Trigger:** After block diagram generation (PNG/draw.io format)
+- **Purpose:** Visual verification of system architecture
+- **User Action:** Review block diagram, approve or request changes
+- **Next Step:** Only proceeds to component selection after approval
+
+**Gate 2: HRS/BOM Approval**
+- **Trigger:** After HRS, BOM, compliance validation complete
+- **Purpose:** Verify component selection, pricing, specifications
+- **User Action:** Review HRS document and BOM spreadsheet
+- **Next Step:** Proceeds to netlist generation after approval
+
+**Gate 3: Merge Request Review**
+- **Trigger:** After code generation and automated review
+- **Purpose:** Human review of generated software code
+- **User Action:** Code review, testing, approval/rejection
+- **Next Step:** Git push only after MR approval
+
+**RF System Detection and Special Handling:**
+
+The system automatically detects RF/microwave projects based on requirements and generates additional documentation:
+
+1. **GLB (Gain Loss Budget)**
+   - Calculates signal power at each stage
+   - Accounts for amplifier gains, mixer losses, filter insertion loss
+   - Validates against sensitivity and dynamic range requirements
+   - Output: GLB spreadsheet with stage-by-stage analysis
+
+2. **Power Consumption Analysis**
+   - Per-component power dissipation
+   - Thermal analysis and heat sink requirements
+   - Power supply sizing
+   - Battery life estimation (if applicable)
+   - Output: Power budget document with thermal maps
+
+3. **RF-Specific Compliance**
+   - FCC Part 15/18 regulations
+   - CE RED (Radio Equipment Directive)
+   - Frequency band allocations
+   - EMC/EMI considerations
+
+### 4.4 Document Hierarchy and Dependencies
+
+```
+Requirements (User Input)
+    ↓
+Block Diagram (PNG/draw.io) → [GATE 1: User Approval]
+    ↓
+HRS + BOM + [GLB + Power (if RF)] → [GATE 2: User Approval]
+    ↓
+Netlist + GLR
+    ↓
+RDT + PSQ (FPGA Team Preparation)
+    ↓
+SRS + SDD (Based on: RDT, PSQ, HRS)
+    ↓
+Software Code (Based on: RDT, PSQ)
+    ↓
+Code Review Report → [GATE 3: MR Review]
+    ↓
+Git Push (After Approval)
+```
+
+**Document Dependencies:**
+- **SRS depends on:** RDT, PSQ, HRS
+- **SDD depends on:** RDT, PSQ, HRS
+- **Software Code depends on:** RDT, PSQ
+- **GLB depends on:** Block Diagram, Component Selection (RF only)
+- **Power Analysis depends on:** BOM, Component Datasheets
+
+### 4.5 Data Flow
 
 ```
 User Input (Natural Language)
     ↓
 n8n: Parse Requirements (Claude)
+    ↓
+n8n: Generate Block Diagram (Claude → PNG/draw.io)
+    ↓
+User: APPROVE Block Diagram (Visual Verification)
     ↓
 n8n: Extract Component Specs
     ↓
@@ -374,21 +462,37 @@ PostgreSQL: Cache Results
     ↓
 n8n: AI Component Selection (Claude)
     ↓
-n8n: Generate Block Diagram
+n8n: Generate BOM with Pricing
+    ↓
+n8n: If RF System → Generate GLB (Gain Loss Budget)
+    ↓
+n8n: If RF System → Power Consumption Analysis
+    ↓
+n8n: Generate HRS (Hardware Requirements Specification)
+    ↓
+n8n: Compliance Validation
     ↓
 PostgreSQL: Save to projects, block_diagrams
     ↓
-User: APPROVE command
+User: APPROVE HRS/BOM
     ↓
 n8n: Generate Netlist (Claude + NetworkX)
     ↓
-n8n: Generate GLR (Claude)
+n8n: Generate GLR (Glue Logic Requirement)
     ↓
-n8n: Generate Software (Claude)
+FPGA Team: Prepare RDT & PSQ (Based on GLR + Schematic)
+    ↓
+n8n: Generate SRS (Based on RDT, PSQ, HRS)
+    ↓
+n8n: Generate SDD (Based on RDT, PSQ, HRS)
+    ↓
+n8n: Generate Software (C/C++, Qt based on RDT/PSQ)
     ↓
 n8n: Run Code Review (SonarQube/Semgrep)
     ↓
-n8n: Git Commit (Automated)
+User: REVIEW Merge Request
+    ↓
+n8n: Git Push (After MR Approval)
     ↓
 AntiGravity: Display Code + Quality Metrics
     ↓
@@ -925,11 +1029,16 @@ The Hardware Pipeline project demonstrates:
 ### 15.2 Glossary
 
 - **BOM** - Bill of Materials
+- **GLB** - Gain Loss Budget (RF systems)
 - **GLR** - Glue Logic Requirement
 - **HRS** - Hardware Requirements Specification
+- **MR** - Merge Request
 - **NRND** - Not Recommended for New Designs
+- **PSQ** - Product Specification Questionnaire
 - **RDT** - Register Description Table
 - **ROI** - Return on Investment
+- **SDD** - Software Design Document
+- **SRS** - Software Requirements Specification
 - **TCO** - Total Cost of Ownership
 
 ### 15.3 References
