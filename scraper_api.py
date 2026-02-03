@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # Import the scraper
-from component_scraper import scrape_components, DatabaseManager
+from component_scraper import scrape_components, search_all_suppliers, DatabaseManager
 
 # ==========================================
 # FASTAPI APP CONFIGURATION
@@ -24,8 +24,8 @@ from component_scraper import scrape_components, DatabaseManager
 
 app = FastAPI(
     title="Hardware Pipeline Component Scraper API",
-    description="REST API for scraping DigiKey and Mouser component data",
-    version="1.0.0",
+    description="REST API for scraping DigiKey, Mouser, and LCSC component data",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -88,6 +88,29 @@ class CacheStatusResponse(BaseModel):
     by_category: Dict[str, int]
     by_source: Dict[str, int]
 
+class ComponentSearchItem(BaseModel):
+    """Single component search item for search_all"""
+    search_term: str = Field(..., min_length=1, description="Component search term")
+    category: str = Field(..., description="Component category")
+
+class SearchAllRequest(BaseModel):
+    """Request model for /api/scrape/all - search multiple components in parallel"""
+    components: List[ComponentSearchItem] = Field(
+        ...,
+        min_items=1,
+        description="List of components to search across all suppliers"
+    )
+    use_cache: bool = Field(default=True, description="Check cache before scraping")
+
+class SearchAllResponse(BaseModel):
+    """Response model for /api/scrape/all"""
+    success: bool
+    total_components: int
+    total_searches: int
+    results: List[Dict]
+    timestamp: str
+    error: Optional[str] = None
+
 # ==========================================
 # API ENDPOINTS
 # ==========================================
@@ -120,12 +143,12 @@ async def health_check():
 @app.post("/api/scrape", response_model=ScrapeResponse)
 async def scrape_endpoint(request: ScrapeRequest):
     """
-    Scrape components from DigiKey and Mouser.
-    
+    Scrape components from DigiKey, Mouser, and LCSC.
+
     - Checks cache first (if use_cache=True)
     - Returns cached results if available and not expired
     - Otherwise scrapes fresh data and caches it
-    
+
     Example:
     ```json
     {
@@ -145,7 +168,7 @@ async def scrape_endpoint(request: ScrapeRequest):
                 use_cache=request.use_cache
             ))
         )
-        
+
         return ScrapeResponse(
             success=True,
             cache_hit=result.get('cache_hit', False),
@@ -155,7 +178,7 @@ async def scrape_endpoint(request: ScrapeRequest):
             components=result.get('components', []),
             sources=result.get('sources', {})
         )
-        
+
     except Exception as e:
         return ScrapeResponse(
             success=False,
@@ -165,6 +188,71 @@ async def scrape_endpoint(request: ScrapeRequest):
             total_found=0,
             components=[],
             sources={},
+            error=str(e)
+        )
+
+
+@app.post("/api/scrape/all", response_model=SearchAllResponse)
+async def scrape_all_endpoint(request: SearchAllRequest):
+    """
+    Search multiple components across all suppliers (DigiKey, Mouser, LCSC) in parallel.
+    Perfect component listing - searches all suppliers simultaneously.
+
+    - Runs all searches in parallel for maximum performance
+    - Returns results organized by component type
+    - Shows breakdown by supplier for each component
+
+    Example:
+    ```json
+    {
+        "components": [
+            {"search_term": "STM32F4", "category": "processor"},
+            {"search_term": "buck converter 3.3V", "category": "power_regulator"},
+            {"search_term": "SPI ADC 16-bit", "category": "interface"}
+        ],
+        "use_cache": true
+    }
+    ```
+
+    Response includes:
+    - total_components: Total number of components found across all searches
+    - total_searches: Number of component types searched
+    - results: Array of results for each component type with supplier breakdown
+    """
+    try:
+        # Convert request to component list
+        component_list = [
+            {
+                'search_term': item.search_term,
+                'category': item.category
+            }
+            for item in request.components
+        ]
+
+        # Run the async search_all function
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: asyncio.run(search_all_suppliers(
+                component_list=component_list,
+                use_cache=request.use_cache
+            ))
+        )
+
+        return SearchAllResponse(
+            success=True,
+            total_components=result.get('total_components', 0),
+            total_searches=result.get('total_searches', 0),
+            results=result.get('results', []),
+            timestamp=result.get('timestamp', datetime.now().isoformat())
+        )
+
+    except Exception as e:
+        return SearchAllResponse(
+            success=False,
+            total_components=0,
+            total_searches=0,
+            results=[],
+            timestamp=datetime.now().isoformat(),
             error=str(e)
         )
 

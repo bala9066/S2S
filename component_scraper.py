@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Hardware Pipeline - Real Playwright Component Scraper
-Scrapes DigiKey and Mouser for component data
+Scrapes DigiKey, Mouser, and LCSC for component data
 Saves to PostgreSQL cache
 """
 
@@ -11,6 +11,7 @@ import re
 import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+from dataclasses import dataclass, field, asdict
 import hashlib
 
 from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeout
@@ -24,6 +25,38 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# DATA CLASSES
+# ==========================================
+
+@dataclass
+class ComponentInfo:
+    """Data class for electronic component information with type safety"""
+    part_number: str
+    manufacturer: str
+    description: str
+    category: str
+    datasheet_url: str
+    source: str
+    specifications: Dict = field(default_factory=dict)
+    pricing: Dict = field(default_factory=dict)
+    availability: Dict = field(default_factory=dict)
+    lifecycle_status: str = "Active"
+
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for JSON serialization"""
+        return asdict(self)
+
+    def is_valid(self) -> bool:
+        """Check if component has minimum required information"""
+        return bool(
+            self.part_number and
+            self.manufacturer and
+            self.description and
+            self.source
+        )
 
 
 class DatabaseManager:
@@ -508,6 +541,153 @@ class MouserScraper:
         return ''
 
 
+class LCSCScraper:
+    """Scrapes LCSC (Lichuang) for component data - Good for Chinese components"""
+
+    def __init__(self, browser: Browser):
+        self.browser = browser
+        self.base_url = 'https://www.lcsc.com'
+
+    async def scrape(self, search_term: str, category: str) -> List[Dict]:
+        """Scrape LCSC for components"""
+        logger.info(f"🔍 LCSC: Searching for '{search_term}'")
+
+        page = await self.browser.new_page()
+        results = []
+
+        try:
+            # Construct search URL
+            search_url = f"{self.base_url}/search?q={search_term.replace(' ', '%20')}"
+            await page.goto(search_url, timeout=30000, wait_until='domcontentloaded')
+            logger.debug("LCSC search page loaded")
+
+            # Wait for results with longer timeout (LCSC can be slower)
+            try:
+                await page.wait_for_selector('.product-item, .product-list-item, [class*="product"]', timeout=20000)
+                logger.debug("Results loaded")
+            except PlaywrightTimeout:
+                logger.warning("⚠️ LCSC: Timeout waiting for results")
+                return results
+
+            # Extract products
+            product_selectors = [
+                '.product-item',
+                '.product-list-item',
+                '[class*="product-card"]',
+                'tr[class*="product"]'
+            ]
+
+            products = []
+            for selector in product_selectors:
+                products = await page.locator(selector).all()
+                if products:
+                    logger.debug(f"Found products with selector: {selector}")
+                    break
+
+            logger.info(f"Found {len(products)} product rows")
+
+            # Process each product (limit to top 5)
+            for i, product_elem in enumerate(products[:5]):
+                try:
+                    component = await self._extract_lcsc_product(product_elem, category)
+                    if component and component['part_number']:
+                        results.append(component)
+                        logger.debug(f"Extracted: {component['part_number']}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract product {i+1}: {e}")
+                    continue
+
+            logger.info(f"✅ LCSC: Extracted {len(results)} components")
+
+        except Exception as e:
+            logger.error(f"❌ LCSC scraping error: {e}")
+
+        finally:
+            await page.close()
+
+        return results
+
+    async def _extract_lcsc_product(self, elem, category: str) -> Optional[Dict]:
+        """Extract product details from an LCSC element"""
+        try:
+            # Part number (MPN)
+            part_selectors = [
+                '[class*="part-number"]',
+                '[class*="mfr-part"]',
+                '.mfs-code a',
+                '[class*="mpn"]'
+            ]
+            part_number = await self._get_text(elem, part_selectors)
+
+            # Manufacturer/Brand
+            mfg_selectors = [
+                '[class*="manufacturer"]',
+                '[class*="brand"]',
+                '.brand-name'
+            ]
+            manufacturer = await self._get_text(elem, mfg_selectors)
+
+            # Description
+            desc_selectors = [
+                '[class*="description"]',
+                '[class*="product-name"]',
+                '.cart-product',
+                'a[title]'
+            ]
+            description = await self._get_text(elem, desc_selectors)
+
+            # Price
+            price_selectors = [
+                '[class*="price"]',
+                '.product-price',
+                '[class*="unit-price"]'
+            ]
+            price = await self._get_text(elem, price_selectors)
+
+            # Stock/Availability
+            stock_selectors = [
+                '[class*="stock"]',
+                '[class*="inventory"]',
+                '[class*="qty"]'
+            ]
+            stock = await self._get_text(elem, stock_selectors)
+
+            # Clean price (LCSC uses different currency formats)
+            price_clean = re.sub(r'[^\d.]', '', price) if price else '0.00'
+
+            return {
+                'part_number': part_number or 'Unknown',
+                'manufacturer': manufacturer or 'Unknown',
+                'description': description[:200] if description else 'No description',
+                'category': category,
+                'datasheet_url': '',
+                'specifications': {},
+                'pricing': {
+                    'unit_price': f'${price_clean}' if price_clean else '$0.00',
+                    'currency': 'USD'
+                },
+                'availability': {'stock': stock or 'Unknown'},
+                'lifecycle_status': 'Active',
+                'source': 'LCSC'
+            }
+
+        except Exception as e:
+            logger.warning(f"Product extraction error: {e}")
+            return None
+
+    async def _get_text(self, element, selectors: List[str]) -> str:
+        """Try multiple selectors to get text content"""
+        for selector in selectors:
+            try:
+                elem = element.locator(selector).first
+                if await elem.is_visible(timeout=1000):
+                    text = await elem.text_content()
+                    return text.strip() if text else ''
+            except:
+                continue
+        return ''
+
+
 async def scrape_components(search_term: str, category: str, use_cache: bool = True) -> Dict:
     """
     Main function to scrape components from DigiKey and Mouser
@@ -558,28 +738,39 @@ async def scrape_components(search_term: str, category: str, use_cache: bool = T
         # Create scrapers
         digikey = DigiKeyScraper(browser)
         mouser = MouserScraper(browser)
-        
-        # Run scrapers in parallel
+        lcsc = LCSCScraper(browser)
+
+        # Run scrapers in parallel (all 3 suppliers)
         try:
             digikey_task = asyncio.create_task(digikey.scrape(search_term, category))
             mouser_task = asyncio.create_task(mouser.scrape(search_term, category))
-            
-            digikey_results, mouser_results = await asyncio.gather(
-                digikey_task, 
+            lcsc_task = asyncio.create_task(lcsc.scrape(search_term, category))
+
+            digikey_results, mouser_results, lcsc_results = await asyncio.gather(
+                digikey_task,
                 mouser_task,
+                lcsc_task,
                 return_exceptions=True
             )
-            
+
             # Handle results
             if isinstance(digikey_results, list):
                 all_components.extend(digikey_results)
+                logger.info(f"✅ DigiKey: {len(digikey_results)} components")
             else:
                 logger.error(f"DigiKey error: {digikey_results}")
-            
+
             if isinstance(mouser_results, list):
                 all_components.extend(mouser_results)
+                logger.info(f"✅ Mouser: {len(mouser_results)} components")
             else:
                 logger.error(f"Mouser error: {mouser_results}")
+
+            if isinstance(lcsc_results, list):
+                all_components.extend(lcsc_results)
+                logger.info(f"✅ LCSC: {len(lcsc_results)} components")
+            else:
+                logger.error(f"LCSC error: {lcsc_results}")
             
         except Exception as e:
             logger.error(f"Scraping error: {e}")
@@ -603,12 +794,81 @@ async def scrape_components(search_term: str, category: str, use_cache: bool = T
         'total_found': len(all_components),
         'sources': {
             'digikey': len([c for c in all_components if c['source'] == 'DigiKey']),
-            'mouser': len([c for c in all_components if c['source'] == 'Mouser'])
+            'mouser': len([c for c in all_components if c['source'] == 'Mouser']),
+            'lcsc': len([c for c in all_components if c['source'] == 'LCSC'])
         }
     }
-    
+
     logger.info(f"✅ Search complete: {len(all_components)} components found")
     return result
+
+
+async def search_all_suppliers(
+    component_list: List[Dict[str, str]],
+    use_cache: bool = True
+) -> Dict:
+    """
+    Search all suppliers (DigiKey, Mouser, LCSC) for multiple components in parallel
+    Perfect component listing across all suppliers
+
+    Args:
+        component_list: List of components to search, each with 'search_term' and 'category'
+            Example: [
+                {'search_term': 'STM32F4', 'category': 'processor'},
+                {'search_term': 'buck converter 3.3V', 'category': 'power_regulator'}
+            ]
+        use_cache: Whether to check cache first
+
+    Returns:
+        Dict with all components organized by search term
+        {
+            'total_components': 15,
+            'total_searches': 2,
+            'results': [
+                {
+                    'search_term': 'STM32F4',
+                    'category': 'processor',
+                    'components': [...],
+                    'sources': {'digikey': 5, 'mouser': 5, 'lcsc': 5}
+                },
+                ...
+            ]
+        }
+    """
+    logger.info(f"🌐 Starting search_all for {len(component_list)} component types")
+
+    # Run all searches in parallel
+    search_tasks = [
+        scrape_components(item['search_term'], item['category'], use_cache)
+        for item in component_list
+    ]
+
+    results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+    # Organize results
+    all_results = []
+    total_components = 0
+
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"Search failed for {component_list[i]['search_term']}: {result}")
+            all_results.append({
+                'search_term': component_list[i]['search_term'],
+                'category': component_list[i]['category'],
+                'components': [],
+                'error': str(result),
+                'sources': {}
+            })
+        else:
+            all_results.append(result)
+            total_components += result.get('total_found', 0)
+
+    return {
+        'total_components': total_components,
+        'total_searches': len(component_list),
+        'results': all_results,
+        'timestamp': datetime.now().isoformat()
+    }
 
 
 # ==========================================
