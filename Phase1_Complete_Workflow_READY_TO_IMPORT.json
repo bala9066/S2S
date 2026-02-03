@@ -1,0 +1,514 @@
+{
+  "name": "Phase_1_Requirements_Components_Universal",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345601",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "phase1-chat-hardware-pipeline"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// VALIDATE INPUT AND DETECT SYSTEM TYPE\n// Universal for all hardware systems\n// ==========================================\n\nconst chatMessage = $input.item.json.chatInput || $input.item.json.input || '';\n\n// Check if this is initial requirements or approval response\nconst isApproval = chatMessage.toLowerCase().includes('approve') || \n                   chatMessage.toLowerCase().includes('reject') ||\n                   chatMessage.toLowerCase().includes('modify');\n\nif (isApproval) {\n  // Handle approval - pass through\n  return {\n    json: {\n      is_approval: true,\n      approval_action: chatMessage.toLowerCase().includes('approve') ? 'approve' : \n                       chatMessage.toLowerCase().includes('reject') ? 'reject' : 'modify',\n      message: chatMessage\n    }\n  };\n}\n\n// Initial requirements input\nconst requirements = chatMessage.trim();\n\nif (!requirements || requirements.length < 30) {\n  throw new Error('❌ Requirements must be at least 30 characters.\\n\\nPlease provide detailed hardware design requirements.\\n\\nExample:\\n\"Design a 3-phase motor controller with TMS320F28379D DSP, 10kW output power, 48V DC input, 0-400Hz output frequency, Ethernet interface for monitoring, current sensing, and temperature protection.\"');\n}\n\n// Generate project name from requirements\nconst projectName = 'Project_' + Date.now();\n\n// Auto-detect system type\nconst reqLower = requirements.toLowerCase();\nlet systemType = 'Digital_Controller'; // default\n\nif (reqLower.includes('rf') || reqLower.includes('wireless') || reqLower.includes('ghz') || \n    reqLower.includes('antenna') || reqLower.includes('transceiver') || reqLower.includes('frequency')) {\n  systemType = 'RF_Wireless';\n} else if (reqLower.includes('motor') || reqLower.includes('inverter') || reqLower.includes('3-phase') || \n           reqLower.includes('bldc') || reqLower.includes('servo') || reqLower.includes('gate driver')) {\n  systemType = 'Motor_Control';\n} else if (reqLower.includes('power supply') || reqLower.includes('ac/dc') || reqLower.includes('dc/dc') || \n           reqLower.includes('rectifier') || reqLower.includes('buck') || reqLower.includes('boost')) {\n  systemType = 'Power_Electronics';\n} else if (reqLower.includes('sensor') || reqLower.includes('adc') || reqLower.includes('measurement') || \n           reqLower.includes('amplifier') || reqLower.includes('precision')) {\n  systemType = 'Sensor_System';\n} else if (reqLower.includes('plc') || reqLower.includes('industrial') || reqLower.includes('modbus') || \n           reqLower.includes('profibus') || reqLower.includes('fieldbus') || reqLower.includes('24v')) {\n  systemType = 'Industrial_Control';\n} else if (reqLower.includes('fpga') || reqLower.includes('xilinx') || reqLower.includes('altera') || \n           reqLower.includes('ddr') || reqLower.includes('ethernet') || reqLower.includes('mcu')) {\n  systemType = 'Digital_Controller';\n}\n\nconsole.log(`[PHASE 1] Detected System Type: ${systemType}`);\nconsole.log(`[PHASE 1] Requirements length: ${requirements.length} chars`);\n\nreturn {\n  json: {\n    is_approval: false,\n    requirements: requirements,\n    project_name: projectName,\n    system_type: systemType,\n    timestamp: Date.now(),\n    phase: 1,\n    status: 'requirements_received'\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345602",
+      "name": "Validate Input & Detect Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_approval }}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345603",
+      "name": "Is This Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// BUILD AI PROMPT FOR REQUIREMENTS PARSING\n// ==========================================\n\nconst requirements = $json.requirements;\nconst systemType = $json.system_type;\n\nconst prompt = `You are a hardware design expert. Parse these requirements and extract structured data.\n\nSYSTEM TYPE DETECTED: ${systemType}\nREQUIREMENTS:\n${requirements}\n\nExtract and return ONLY valid JSON (no markdown, no explanation):\n\n{\n  \"system_type\": \"${systemType}\",\n  \"primary_components\": {\n    \"processor\": {\n      \"type\": \"FPGA/MCU/DSP/CPU\",\n      \"specific_part\": \"part number if mentioned\",\n      \"required_features\": [\"features needed\"],\n      \"package\": \"package type\"\n    },\n    \"power\": {\n      \"input_voltage\": \"input voltage\",\n      \"output_power\": \"output power\",\n      \"rails_needed\": [\"list voltage rails like 3.3V, 1.8V, etc\"]\n    },\n    \"interfaces\": [\"Ethernet\", \"CAN\", \"USB\", \"SPI\", \"I2C\", etc]\n  },\n  \"specifications\": {},\n  \"key_components_needed\": [\n    {\"category\": \"processor/power/driver/interface\", \"description\": \"what's needed\", \"quantity\": 1}\n  ],\n  \"special_requirements\": [\"isolation\", \"EMI shielding\", etc],\n  \"certifications_needed\": [\"RoHS\", \"CE\", \"FCC\", etc],\n  \"environmental\": {\n    \"temperature_range\": \"range\",\n    \"protection_rating\": \"IP rating if needed\"\n  }\n}\n\nRULES:\n1. Be specific and technical\n2. Use standard units (V, A, W, Hz)\n3. Return ONLY JSON, no other text\n4. All fields must be present\n`;\n\nreturn {\n  json: {\n    ...($json),\n    ai_prompt: prompt,\n    task_complexity: 'high',\n    max_tokens: 3000\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345604",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345605",
+      "name": "AI: Parse Requirements",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// EXTRACT PARSED REQUIREMENTS FROM AI\n// ==========================================\n\nconst aiResponse = $input.item.json;\nlet parsedRequirements;\n\ntry {\n  // Extract text from AI Agent response\n  let content = '';\n  \n  // AI Agent returns 'output' field\n  if (aiResponse.output) {\n    content = aiResponse.output;\n  } else if (aiResponse.choices && aiResponse.choices[0]) {\n    content = aiResponse.choices[0].message?.content || '';\n  } else if (aiResponse.text) {\n    content = aiResponse.text;\n  } else if (typeof aiResponse === 'string') {\n    content = aiResponse;\n  }\n  \n  // If response is already an object\n  if (typeof content === 'object') {\n    parsedRequirements = content;\n  } else {\n    // Extract JSON from text response\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsedRequirements = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found in AI response');\n    }\n  }\n  \n  console.log('[AI] Parsed system type:', parsedRequirements.system_type);\n  \n} catch (error) {\n  console.error('[AI] Parse error:', error);\n  // Return default structure on error\n  const validationData = $('Validate Input & Detect Type').item?.json || {};\n  parsedRequirements = {\n    system_type: validationData.system_type || 'Digital_Controller',\n    primary_components: {\n      processor: { type: 'MCU', specific_part: 'STM32F4', required_features: ['GPIO', 'ADC', 'PWM'], package: 'LQFP' },\n      power: { input_voltage: '12V', output_power: '10W', rails_needed: ['3.3V', '5V'] },\n      interfaces: ['CAN', 'SPI', 'I2C']\n    },\n    specifications: {},\n    key_components_needed: [{ category: 'processor', description: 'Main MCU', quantity: 1 }],\n    special_requirements: [],\n    certifications_needed: ['RoHS'],\n    environmental: { temperature_range: '-40 to 85C', protection_rating: 'IP20' }\n  };\n}\n\nconst validationData = $('Validate Input & Detect Type').item?.json || {};\n\nreturn {\n  json: {\n    parsed_requirements: parsedRequirements,\n    original_requirements: validationData.requirements || '',\n    project_name: validationData.project_name || 'Hardware_Project_' + Date.now(),\n    system_type: parsedRequirements.system_type || validationData.system_type || 'Digital_Controller',\n    timestamp: validationData.timestamp || Date.now()\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345606",
+      "name": "Extract Parsed Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// GENERATE UNIVERSAL BLOCK DIAGRAM\n// ==========================================\n\nconst parsed = $json.parsed_requirements || {};\nconst projectName = $json.project_name || 'Hardware_Project';\nconst systemType = $json.system_type || 'Digital_Controller';\n\nconst diagram = {\n  version: '1.0',\n  type: 'hardware_block_diagram',\n  metadata: {\n    project: projectName,\n    system_type: systemType,\n    created: new Date().toISOString()\n  },\n  blocks: [],\n  connections: []\n};\n\nlet blockId = 1;\nconst blockMap = {};\n\n// PROCESSOR BLOCK\nconst proc = parsed.primary_components?.processor || { type: 'MCU' };\nconst procBlock = {\n  id: `B${blockId}`,\n  type: 'processor',\n  label: proc.specific_part || proc.type || 'Processor',\n  position: {x: 500, y: 300}\n};\nblockMap.processor = procBlock.id;\ndiagram.blocks.push(procBlock);\nblockId++;\n\n// POWER BLOCKS\nconst power = parsed.primary_components?.power || { input_voltage: '12V', rails_needed: ['3.3V'] };\nconst inputBlock = {\n  id: `B${blockId}`,\n  type: 'power_input',\n  label: `Input ${power.input_voltage || '12V'}`,\n  position: {x: 100, y: 100}\n};\nblockMap.input_power = inputBlock.id;\ndiagram.blocks.push(inputBlock);\nblockId++;\n\n// Voltage regulators\nconst rails = power.rails_needed || ['3.3V'];\nrails.forEach((rail, i) => {\n  const railBlock = {\n    id: `B${blockId}`,\n    type: 'power_regulator',\n    label: `Regulator ${rail}`,\n    position: {x: 100, y: 200 + i*80}\n  };\n  diagram.blocks.push(railBlock);\n  diagram.connections.push({ from: blockMap.input_power, to: railBlock.id, label: power.input_voltage });\n  diagram.connections.push({ from: railBlock.id, to: blockMap.processor, label: rail });\n  blockId++;\n});\n\n// INTERFACE BLOCKS\nconst interfaces = parsed.primary_components?.interfaces || ['SPI', 'I2C'];\ninterfaces.forEach((iface, i) => {\n  const ifaceBlock = {\n    id: `B${blockId}`,\n    type: 'interface',\n    label: iface,\n    position: {x: 800, y: 150 + i*80}\n  };\n  diagram.blocks.push(ifaceBlock);\n  diagram.connections.push({ from: blockMap.processor, to: ifaceBlock.id, label: iface });\n  blockId++;\n});\n\n// Generate ASCII diagram with safe string operations\nconst safeName = (projectName || 'Project').substring(0, 20).padEnd(20);\nconst safeType = (systemType || 'Unknown').padEnd(23);\n\nconst asciiDiagram = `\n╔════════════════════════════════════════╗\n║  BLOCK DIAGRAM: ${safeName}  ║\n╠════════════════════════════════════════╣\n║  System Type: ${safeType}║\n║  Total Blocks: ${diagram.blocks.length.toString().padEnd(22)}║\n║  Connections: ${diagram.connections.length.toString().padEnd(23)}║\n╚════════════════════════════════════════╝\n\nMAIN COMPONENTS:\n${diagram.blocks.map((b, i) => `  ${i+1}. ${b.label} (${b.type})`).join('\\n')}\n\nCONNECTIONS:\n${diagram.connections.slice(0, 8).map((c, i) => `  ${i+1}. ${diagram.blocks.find(b=>b.id===c.from)?.label} → ${diagram.blocks.find(b=>b.id===c.to)?.label}`).join('\\n')}\n`;\n\nreturn {\n  json: {\n    ...($json),\n    block_diagram: diagram,\n    ascii_diagram: asciiDiagram,\n    awaiting_approval: true\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345607",
+      "name": "Generate Block Diagram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Show diagram and request approval\nconst diagram = $json.ascii_diagram;\nconst projectName = $json.project_name;\n\nreturn {\n  json: {\n    output: `📋 **BLOCK DIAGRAM GENERATED**\\n\\n${diagram}\\n\\n✅ **Please review the block diagram above.**\\n\\n**Options:**\\n- Type **\"APPROVE\"** to continue to component selection\\n- Type **\"REJECT: <reason>\"** to request changes\\n\\nWaiting for your approval...`,\n    ...($json)\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345608",
+      "name": "Show Diagram & Wait Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// HANDLE APPROVAL RESPONSE\n// ==========================================\n\nconst approvalMsg = $json.approval_action || '';\n\nif (approvalMsg !== 'approve') {\n  throw new Error('❌ Workflow stopped. User did not approve block diagram.\\n\\nPlease start over with updated requirements.');\n}\n\nconsole.log('[APPROVAL] Block diagram approved. Continuing to component search...');\n\nreturn {\n  json: {\n    approved: true,\n    block_diagram: $('Generate Block Diagram').item.json.block_diagram,\n    parsed_requirements: $('Extract Parsed Data').item.json.parsed_requirements,\n    project_name: $('Extract Parsed Data').item.json.project_name,\n    system_type: $('Extract Parsed Data').item.json.system_type\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345609",
+      "name": "Handle Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// BUILD COMPONENT SEARCH QUERIES\n// ==========================================\n\nconst parsed = $json.parsed_requirements;\nconst systemType = $json.system_type;\nconst searches = [];\n\n// Processor search\nif (parsed.primary_components?.processor) {\n  const proc = parsed.primary_components.processor;\n  searches.push({\n    category: 'processor',\n    search_term: proc.specific_part || proc.type || 'MCU',\n    priority: 1\n  });\n}\n\n// Power regulators\nif (parsed.primary_components?.power) {\n  const rails = parsed.primary_components.power.rails_needed || ['3.3V'];\n  rails.forEach(rail => {\n    searches.push({\n      category: 'power_regulator',\n      search_term: `DC-DC converter ${rail}`,\n      priority: 2\n    });\n  });\n}\n\n// Interface ICs\nif (parsed.primary_components?.interfaces) {\n  parsed.primary_components.interfaces.forEach(iface => {\n    searches.push({\n      category: 'interface',\n      search_term: `${iface} transceiver IC`,\n      priority: 3\n    });\n  });\n}\n\nconsole.log(`[SEARCH] Generated ${searches.length} component searches`);\n\n// Return array for split in batches\nreturn searches.map(s => ({\n  json: {\n    ...s,\n    project_name: $json.project_name,\n    system_type: systemType\n  }\n}));"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345610",
+      "name": "Build Component Searches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 3,
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345611",
+      "name": "Split Searches (3 per batch)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1240,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://playwright:8000/api/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345612",
+      "name": "Search Components (Real)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        500
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345613",
+      "name": "Aggregate All Components",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// PREPARE COMPONENT RECOMMENDATIONS\n// ==========================================\n\nconst allResults = $input.all();\nconst allComponents = [];\n\nallResults.forEach(result => {\n  if (result.json.components) {\n    allComponents.push(...result.json.components);\n  }\n});\n\n// Build recommendation prompt\nconst prompt = `Analyze these component options and recommend the best choice for each category.\n\nComponents found: ${allComponents.length}\n\n${allComponents.slice(0, 15).map((c, i) => `${i+1}. ${c.part_number} - ${c.description} - ${c.price || 'N/A'}`).join('\\n')}\n\nFor each category, recommend ONE component with brief rationale (1 sentence).\n\nReturn JSON:\n{\n  \"recommendations\": [\n    {\n      \"category\": \"processor\",\n      \"part_number\": \"XXX\",\n      \"rationale\": \"Best balance of features and price\"\n    }\n  ]\n}`;\n\nreturn {\n  json: {\n    all_components: allComponents,\n    component_count: allComponents.length,\n    ai_prompt: prompt,\n    max_tokens: 2000\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345614",
+      "name": "Prepare Component Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {}
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345615",
+      "name": "AI: Recommend Components",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2040,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// GENERATE BOM\n// ==========================================\n\nconst components = $('Prepare Component Recommendations').item.json.all_components;\nconst projectName = $('Handle Approval').item.json.project_name || 'Hardware_Project';\n\n// Calculate total cost\nlet totalCost = 0;\ncomponents.forEach(comp => {\n  const priceMatch = (comp.price || '$0').toString().match(/\\$?([0-9.]+)/);\n  if (priceMatch) {\n    totalCost += parseFloat(priceMatch[1]);\n  }\n});\n\n// Generate BOM summary\nconst bomSummary = `\n╔══════════════════════════════════════╗\n║         BILL OF MATERIALS            ║\n╠══════════════════════════════════════╣\n║  Project: ${projectName.substring(0, 24).padEnd(24)}║\n║  Total Components: ${components.length.toString().padEnd(17)}║\n║  Estimated Cost: $${totalCost.toFixed(2).padEnd(15)}║\n╚══════════════════════════════════════╝\n\nTOP COMPONENTS:\n${components.slice(0, 10).map((c, i) => \n  `${i+1}. ${(c.part_number || 'Unknown').padEnd(20)} ${(c.price || '$0.00').toString().padStart(10)}`\n).join('\\n')}\n${components.length > 10 ? `\\n... and ${components.length - 10} more components` : ''}\n`;\n\nreturn {\n  json: {\n    project_name: projectName,\n    bom_summary: bomSummary,\n    total_components: components.length,\n    total_cost: totalCost,\n    components: components,\n    phase_1_complete: true\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345616",
+      "name": "Generate BOM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Show BOM and complete\nconst bomSummary = $json.bom_summary;\n\nreturn {\n  json: {\n    output: `✅ **PHASE 1 COMPLETE**\\n\\n${bomSummary}\\n\\n📦 **Next Steps:**\\n- Phase 2: Generate HRS Document (50-70 pages)\\n- Phase 3: Compliance validation\\n- Phase 4: Netlist generation\\n\\nWould you like to continue to Phase 2?`,\n    ...($json)\n  }\n};"
+      },
+      "id": "b8c5e5d9-1234-5678-90ab-cdef12345617",
+      "name": "Show BOM & Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "model": "glm-4.7",
+        "options": {
+          "baseURL": "https://api.z.ai/api/paas/v4"
+        }
+      },
+      "id": "openai-model-parse",
+      "name": "OpenAI Chat Model (Parse)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        400
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "glm-4.7",
+        "options": {
+          "baseURL": "https://api.z.ai/api/paas/v4"
+        }
+      },
+      "id": "openai-model-recommend",
+      "name": "OpenAI Chat Model (Recommend)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2040,
+        600
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input & Detect Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input & Detect Type": {
+      "main": [
+        [
+          {
+            "node": "Is This Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is This Approval?": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Parse Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Parse Requirements": {
+      "main": [
+        [
+          {
+            "node": "Extract Parsed Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Parsed Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Block Diagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Block Diagram": {
+      "main": [
+        [
+          {
+            "node": "Show Diagram & Wait Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show Diagram & Wait Approval": {
+      "main": [
+        [
+          {
+            "node": "Chat Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Approval": {
+      "main": [
+        [
+          {
+            "node": "Build Component Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Component Searches": {
+      "main": [
+        [
+          {
+            "node": "Split Searches (3 per batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Searches (3 per batch)": {
+      "main": [
+        [
+          {
+            "node": "Search Components (Real)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Components (Real)": {
+      "main": [
+        [
+          {
+            "node": "Aggregate All Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Components": {
+      "main": [
+        [
+          {
+            "node": "Prepare Component Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Component Recommendations": {
+      "main": [
+        [
+          {
+            "node": "AI: Recommend Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Recommend Components": {
+      "main": [
+        [
+          {
+            "node": "Generate BOM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate BOM": {
+      "main": [
+        [
+          {
+            "node": "Show BOM & Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model (Parse)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Parse Requirements",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model (Recommend)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Recommend Components",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    "hardware-pipeline",
+    "phase-1",
+    "universal"
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-02T00:00:00.000Z",
+  "versionId": "2.0"
+}

@@ -1,0 +1,545 @@
+Hardware Pipeline
+Simple Phase Guide for Universal Hardware Design
+
+
+Version: 2.0 - Universal Hardware Design
+Date: January 2026
+Scope: RF/Wireless, Digital Controllers, Motor Control, Power Electronics, Industrial Control, and more
+ 
+Table of Contents
+
+Right-click and select 'Update Field' to generate the table of contents
+ 
+What YOU Do vs What AI Does
+This workflow guides you through an 8-phase hardware design process where AI handles calculations, documentation, and code generation while you focus on requirements definition, PCB layout, and FPGA/MCU programming.
+
+PHASE 1: Requirements & Component Selection
+What YOU Do:
+1. Start conversation in chat
+   Examples for different system types:
+
+RF/Wireless Systems: "Design RF system with Xilinx Artix-7 FPGA, buck-boost converters, 40dBm output power, 5-18GHz frequency range, return loss > 10dB"
+Digital Controller: "Design a digital controller module with Xilinx Artix-7 FPGA, power supply, DDR, EEPROM and Ethernet"
+High-Performance Computing: "Design for Zynq Ultrascale+ module with PCIe Gen3, dual 10GbE, DDR4 memory"
+Industrial Control: "Design PLC-style controller with STM32H7, isolated I/O, CAN bus, RS-485, 24V industrial power"
+Motor Control: "Design three-phase motor controller with TMS320F28379D DSP, gate drivers, current sensing, resolver interface"
+Power Electronics: "Design DC-DC converter module with digital control, 400V input, 48V output, 3kW power, synchronous rectification"
+Sensor Interface: "Design multi-sensor acquisition board with 16-bit ADC, 8 channels, SPI/I2C interfaces, isolated power"
+
+2. Answer AI's clarifying questions
+•	AI asks: "What input voltage? What package for FPGA/MCU?"
+•	You answer: "48V DC input, CSG324 package preferred"
+
+3. Choose components when AI shows options
+•	AI shows: "Option 1: XC7A100T $185, Option 2: XC7A200T $295"
+•	You pick: "Option 1"
+•	AI shows: "Power Module Option 1: LTM4644 $45, Option 2: TPS53647 $12"
+•	You pick: "Option 2"
+
+4. Approve or reject the final selection
+•	AI shows complete BOM
+•	You say: "Approved" or "Change the processor to higher performance version"
+
+What AI Does:
+Universal Hardware Design Process:
+
+1.	Parses your requirements → Extracts processor/FPGA type, interfaces, power specs, performance requirements
+2.	Creates system-appropriate block diagram
+   For RF/Wireless Systems: FPGA/MCU, Multi-rail power converters, RF amplifiers, Matching networks, RF I/O
+   For Digital Controllers: Processor/FPGA, Memory subsystem (DDR, EEPROM, Flash), Communication interfaces
+   For Motor Control: DSP/MCU, Gate drivers, Current sensors, Position encoders, Protection circuits
+   For Power Electronics: Control IC/DSP, Power stage (MOSFETs/IGBTs), Gate drivers, Current/voltage sensing
+   For Sensor Systems: ADC/DAC, Signal conditioning, Analog frontend, Digital processor
+3.	Searches components → Queries DigiKey/Mouser APIs
+   Common categories: Processors (FPGAs, MCUs, DSPs), Memory, Power, Interfaces, Analog, RF-specific
+4.	Shows you 2-3 options for each component with price/availability
+5.	Performs system-specific calculations:
+•	RF Systems: Link budget, return loss, harmonics, P1dB compression
+•	Power Systems: Efficiency, ripple, load regulation, thermal dissipation
+•	Digital Systems: Timing analysis, bandwidth calculations, memory throughput
+•	Motor Control: PWM frequency, dead-time, current loop bandwidth
+•	All Systems: Power consumption, thermal analysis, voltage rail requirements
+6.	Designs critical circuits (matching networks, compensation, termination, filters)
+7.	Generates BOM Excel file with pricing, stock, suppliers
+8.	Validates everything: thermal, voltage compatibility, timing, impedance, stability
+
+Outputs:
+•	Block diagram (Draw.io XML + visual)
+•	System-specific analysis files (RF_LinkBudget.xlsx, Power_Analysis.xlsx, Timing_Analysis.xlsx, etc.)
+•	BOM.xlsx (component count and cost varies by complexity)
+
+Time: 60-90 seconds
+ 
+PHASE 2: HRS Document
+What YOU Do:
+Nothing! Just wait - AI generates everything automatically. You can review the Word document after.
+
+What AI Does:
+9.	Adds pin numbers to block diagram (from component datasheets)
+10.	Generates HRS.docx (50-100 page Word document, content adapted to system type)
+Core sections (all system types):
+•	System overview and architecture
+•	Block diagram with detailed annotations
+•	Component descriptions with full specifications
+•	Electrical specifications (voltage rails, current budgets)
+•	Power requirements and thermal analysis
+•	Interface specifications
+•	BOM table
+•	Test requirements
+
+System-specific sections added based on design type (RF, motor control, power, etc.)
+
+Outputs:
+•	HRS.docx (Hardware Requirements Specification - Word format, 50-100 pages)
+•	Block_Diagram_Detailed.io (with pin assignments for all major components)
+
+Time: 30 seconds
+ 
+PHASE 3: Design Constraints & Compliance
+What YOU Do:
+Almost nothing! Answer simple questions:
+•	AI might ask: "Is this for military/export?" (for ITAR/export control)
+•	AI might ask: "What operating temperature range?" (-40°C to +85°C industrial, etc.)
+•	AI might ask: "What safety certifications needed?" (UL, CE, FCC, medical, automotive)
+
+What AI Does:
+11.	Generates design constraints:
+•	Power rail specifications (voltage tolerance, current, noise)
+•	Clock requirements (frequency, jitter, phase noise)
+•	I/O standards (LVDS, LVCMOS, LVTTL, RS-485, CML, etc.)
+•	PCB layout rules (impedance, length matching, isolation, thermal management)
+12.	Checks RoHS compliance (scans for lead, cadmium, mercury, hexavalent chromium)
+13.	Checks REACH compliance (hazardous substances - SVHC list)
+14.	Checks industry-specific compliance requirements:
+
+Industry	Standards	Cost Estimate
+General Electronics	FCC Part 15, CE EMC	$10,000-$20,000
+RF/Wireless	FCC Part 15/90, CE RED, ISED, ITAR	$15,000-$50,000
+Medical Devices	IEC 60601, ISO 13485, FDA 510(k)	$50,000-$200,000+
+Automotive	AEC-Q100/Q200, ISO 26262, CISPR 25	$30,000-$100,000
+Industrial	IEC 61010, ATEX, IECEx, UL 508	$20,000-$60,000
+Military/Aerospace	MIL-STD-461, MIL-STD-810, DO-254	$100,000-$500,000+
+
+15.	Design recommendations (shielding, filtering, emissions control)
+16.	Validates → BLOCKS if critical compliance issues found
+
+Outputs:
+•	Design_Constraints.json (machine-readable constraints)
+•	Compliance_Report.pdf (includes applicable regulatory warnings)
+•	Updated HRS.docx (adds compliance and regulatory section)
+
+Time: 30 seconds
+
+Validation Gate:
+•	✓ PASS → Continue to Phase 4
+•	✗ FAIL → Must fix compliance issues (blocked)
+ 
+PHASE 4: Netlist Generation ⭐ KEY PHASE
+What YOU Do:
+Nothing! Fully automatic - just review the generated netlist after
+
+What AI Does:
+17.	Reads block diagram (with pin assignments from Phase 2)
+18.	Looks up component datasheets for pin definitions (processor/FPGA pinout, memory ICs, power ICs, interface ICs, analog ICs)
+19.	Generates logical netlist:
+•	Lists all components with reference designators
+•	Lists all connections (nets) between components
+•	Assigns pin numbers to each connection
+•	Net naming conventions: Power nets (VCC_CORE_1V0, VCC_IO_1V8, GND), Digital interface nets (SPI, I2C, UART, Ethernet, USB, CAN), High-speed differential nets (DDR, PCIe, LVDS), Analog nets (ADC, DAC, references), RF nets (if applicable)
+20.	Creates TWO formats:
+•	EDIF format (.edif file) → For importing to Xpedition/Altium/KiCad
+•	Excel format (.xlsx file) → For humans to review
+21.	Validates netlist:
+•	No floating pins (all pins connected or explicitly marked NC)
+•	All power pins properly connected
+•	High-speed differential pairs properly paired
+•	Unused inputs properly terminated
+•	Decoupling capacitors present on all power rails
+
+Outputs:
+•	netlist.edif (for EDA tools - industry standard format)
+•	netlist.xlsx (human readable, 3+ sheets):
+   • Sheet 1: Nets (organized by function)
+   • Sheet 2: Components (with reference designators and values)
+   • Sheet 3: Pin Assignments (detailed connection table)
+
+Time: 40 seconds
+
+Why This Is Important:
+This netlist is generated from logical block diagram, NOT from PCB design!
+•	You get netlist BEFORE doing PCB layout
+•	PCB designer can import netlist as starting point
+•	Not dependent on manual schematic capture
+•	Can start Phase 6 (GLR) immediately
+•	Reduces errors from manual entry
+•	Standard format compatible with all major EDA tools
+ 
+PHASE 5: PCB Design 🔧 MANUAL - YOUR TURN
+What YOU Do:
+Manual PCB design in your EDA tool (Xpedition/Altium/KiCad/Eagle)
+
+22.	Import netlist.edif into your EDA tool
+23.	Create/verify schematic (may be auto-generated from netlist)
+24.	Design PCB layout:
+Board stackup selection (system-dependent):
+•	Simple Digital (2-4 layers): Top signals, GND, Power, Bottom signals
+•	Complex Digital/FPGA (6-8 layers): Multiple signal routing and ground planes
+•	RF/Microwave (6-10 layers): Solid ground planes, no splits under RF
+•	High-Power (4-8 layers): 2oz-4oz copper for power layers
+
+Component placement strategies:
+•	Group related components (processor + memory, power IC + passives)
+•	Power management near loads
+•	Decoupling caps very close to IC power pins
+•	Connectors at board edges
+•	Test points accessible
+
+Routing requirements (from Design_Constraints.json):
+•	Power traces: Calculate width based on current (1A ≈ 10-15mil for 1oz copper)
+•	High-speed differential pairs: Maintain specified impedance, length match within tolerance
+•	RF traces: 50Ω controlled impedance, minimize bends
+•	Analog traces: Star routing, guard rings, separate grounds
+•	Clock routing: Equal length to all loads, minimize crosstalk
+
+Special layout requirements:
+•	Thermal management: Thermal vias under power ICs (50-100 vias)
+•	Grounding: Solid ground planes, via stitching
+•	High-voltage isolation: Creepage distance per voltage
+•	Decoupling: Multiple capacitor values, close placement
+25.	Run design rule checks (DRC, ERC, high-speed rules, manufacturing checks)
+26.	Generate manufacturing files:
+•	Gerber files (RS-274X format) - all layers
+•	Drill files (Excellon format)
+•	Assembly files (Pick-and-place CSV, BOM)
+•	Documentation (Fabrication drawing, Assembly drawing)
+27.	Upload to chat: Type "PCB complete" and upload gerbers.zip, drill files, pick-place.csv
+
+What AI Does:
+Waits for your files
+AI can answer design questions in real-time:
+•	"What trace width for 50Ω on FR4 1.6mm with 1oz copper?"
+•	"How many thermal vias for a 5W IC?"
+•	"What's the length matching tolerance for DDR4 at 2400 MT/s?"
+•	"Should I use series or parallel termination for this clock?"
+
+Outputs (YOU CREATE):
+•	Schematic PDF (complete circuit diagram)
+•	Gerber files (7-15 files depending on layers)
+•	Drill files (2-6 files)
+•	Pick-and-place CSV (assembly coordinates)
+•	BOM from PCB tool
+•	Fabrication drawing
+•	Assembly drawing
+
+Time: Varies greatly by complexity:
+   • Simple 2-4 layer board: 4-8 hours
+   • Medium complexity FPGA/processor board: 16-40 hours
+   • Complex RF or high-speed design: 40-80 hours
+   • Power electronics with isolation: 20-40 hours
+ 
+PHASE 6: GLR Generation
+What YOU Do:
+Review and approve default signal conditions
+
+28.	AI shows signal table with confidence levels (VERIFIED or VERIFY)
+29.	You verify critical signals:
+•	Enable/disable pins (power, peripherals, amplifiers)
+•	Reset pins (polarity and default state)
+•	Chip select pins (active high/low)
+•	Safety-critical signals (e-stop, fault, interlock)
+•	Boot configuration pins
+30.	Type "approve" when all signals verified, or request changes
+
+What AI Does:
+31.	Parses netlist.edif for all external interface signals
+32.	Identifies all I/O signals by category (system interfaces, peripheral interfaces, analog I/O, digital I/O, power control, RF I/O)
+33.	Looks up datasheets for each component to determine pin function, electrical characteristics, default state, I/O standard
+34.	Determines for each signal:
+•	Voltage level (1.2V, 1.5V, 1.8V, 2.5V, 3.3V, 5.0V, etc.)
+•	Direction (Input, Output, Bidirectional, Open-drain)
+•	Default condition (High, Low, Hi-Z)
+•	I/O standard (LVCMOS, LVTTL, LVDS, SSTL, etc.)
+•	Drive strength (current, slew rate)
+35.	Generates GLR (Gate-Level Requirements) document in JSON and Excel formats
+
+Outputs:
+•	GLR.json (machine-readable format for tools)
+•	GLR.xlsx (human-readable spreadsheet with multiple sheets):
+   • Sheet 1: Digital I/O Table
+   • Sheet 2: High-Speed Differential I/O
+   • Sheet 3: Memory Interface (DDR4 example)
+   • Sheet 4: Analog I/O
+   • Sheet 5: Power/Control
+   • Sheet 6: Validation Notes
+
+Time: 40 seconds + 5-15 minutes review (depending on complexity)
+
+Validation Gate:
+•	✓ PASS → All checks passed, continue to next phase
+•	⚠ WARNINGS → Issues found but not blocking, user review needed
+•	✗ FAIL → Critical issues found, must fix
+ 
+PHASE 7: FPGA/MCU Implementation 🔧 MANUAL/OPTIONAL
+What YOU Do:
+Choose based on your system:
+
+Option A: FPGA/CPLD System (requires HDL programming)
+When you need FPGA: Complex digital logic, high-speed interfaces, reconfigurable hardware, massive parallel I/O, hardware acceleration
+
+36.	Implement FPGA logic (HDL code in Verilog/VHDL/SystemVerilog)
+   Example modules: Digital converters, Filters, Modulation, Motor control, Data acquisition, High-speed interfaces
+37.	Create RDT (Register Description Table) in Excel:
+   Format: Register Name, Address, Width, Access, Default, Description
+38.	Create PSQ (Programming Sequence) in Excel:
+   Sections: Initialization sequence, Runtime sequences, Fault recovery, Shutdown
+39.	Upload FPGA files: Type "FPGA implementation complete" and upload RDT.xlsx, PSQ.xlsx
+
+Option B: MCU/Processor System (firmware programming)
+When MCU is sufficient: Standard peripherals, lower I/O count, sequential processing, cost-sensitive, lower power
+
+Option C: Simple Digital Logic (no programming)
+Type: "No programmable logic in this design"
+
+What AI Does:
+While you implement: Waits for your files, available to answer technical questions
+After you upload RDT/PSQ: Validates register map, checks programming sequence logic, verifies timing
+
+Outputs (YOU CREATE):
+•	RDT.xlsx (Register Description Table)
+•	PSQ.xlsx (Programming Sequence)
+•	Optional: RTL source code, project files, bitstream
+
+Time: Highly variable based on complexity (4-200+ hours, or skip if not applicable)
+ 
+PHASE 8: Software Development
+What YOU Do:
+Review and approve generated code
+
+40.	AI shows code preview (example: device driver)
+41.	You can request modifications:
+•	"Add error handling for communication failures"
+•	"Add temperature monitoring function"
+•	"Create function to ramp motor speed gradually"
+42.	Request additional features (logging, calibration, diagnostics, unit tests)
+43.	Approve final code: Type "Code approved" or "Generate final package"
+
+What AI Does:
+Automatic software generation from HRS, RDT, PSQ, and GLR:
+
+44.	Generates SRS.docx (Software Requirements Specification, 30-60 pages)
+45.	Generates SDD.docx (Software Design Document, 40-80 pages)
+46.	Generates driver code in BOTH C and C++:
+•	C implementation: Portable, embedded-friendly, minimal dependencies, MISRA-C compliant (optional)
+•	C++ implementation: Object-oriented design, RAII, exception handling, STL usage
+47.	Generates Qt-based control application (if applicable):
+•	Core library (C++ classes)
+•	GUI application with control panel, status monitoring, real-time plotting, configuration editor
+48.	Performs automatic code review:
+•	Static analysis (buffer overflow, null pointers, memory leaks)
+•	Security checks (input validation, vulnerabilities)
+•	Coding standards compliance (MISRA-C, Google C++ Style)
+•	Performance analysis
+•	Thread safety (for multi-threaded code)
+49.	Auto-fixes identified issues
+50.	Generates comprehensive test suite (unit tests, integration tests, coverage report)
+
+Outputs:
+•	Documentation: SRS.docx, SDD.docx
+•	C implementation: device_driver.c/h, hal_interface.c/h, app_interface.c/h, utils.c/h, Makefile
+•	C++ implementation: DeviceDriver.cpp/hpp, HardwareInterface.cpp/hpp, DeviceController.cpp/hpp, CMakeLists.txt
+•	Qt GUI application (if applicable): Library source + GUI application
+•	Test suite: test_device_driver.c, test_hal.c, test_integration.c, test_runner.c
+•	Quality reports: CODE_REVIEW.json, COVERAGE_REPORT.html, STATIC_ANALYSIS.txt
+•	Build system: Makefile, CMakeLists.txt, build scripts, README.md
+
+Time: 60-90 seconds
+
+Validation Gate:
+•	✓ PASS → Code ready for use, proceed to delivery
+•	⚠ WARNINGS → Non-critical issues, manual review recommended
+•	✗ FAIL → Critical issues found, AI auto-fixes and retries
+ 
+Complete Timeline Summary
+Phase	You Do	AI Does	Time
+1: Requirements & Components	Answer questions, pick options	Search components, generate BOM	60-90 sec
+2: HRS Document	Nothing	Generate 50-100 page specification	30 sec
+3: Compliance	Answer 1-3 questions	Check regulations, estimate costs	30 sec
+4: Netlist ⭐	Nothing	Generate EDIF + Excel netlist	40 sec
+5: PCB Design 🔧	MANUAL - Design PCB layout	Wait (answer questions)	4-80 hrs
+6: GLR	Review and approve I/O defaults	Parse netlist, generate I/O specs	40 sec + review
+7: FPGA/MCU 🔧	MANUAL - Implement HDL/firmware	Wait (answer questions)	4-200+ hrs or skip
+8: Software	Review and approve code	Generate SRS/SDD/code/tests	60-90 sec
+
+Total Automated Time: ~4-5 minutes (AI processing)
+Total Manual Time: 8-280+ hours (PCB design + FPGA/MCU implementation)
+Total Project Time: Highly variable based on design complexity and experience
+ 
+Final Deliverables
+Quantity varies by system complexity - typical range: 70-100+ files
+
+Documents (Word/PDF):
+51.	HRS.docx - Hardware Requirements Specification (50-100 pages)
+52.	SRS.docx - Software Requirements Specification (30-60 pages)
+53.	SDD.docx - Software Design Document (40-80 pages)
+54.	Compliance_Report.pdf (regulatory requirements, certifications, costs)
+
+Spreadsheets (Excel):
+55.	BOM.xlsx (5 sheets: parts, pricing, suppliers, lifecycle, power) - $100-$10,000+ depending on components
+56.	Power_Analysis.xlsx (per-rail consumption, efficiency, thermal)
+57.	netlist.xlsx (3 sheets: nets, components, pin assignments)
+58.	GLR.xlsx (I/O specifications: voltage, directions, standards, drive)
+59.	RDT.xlsx (Register Description Table - if FPGA/MCU used)
+60.	PSQ.xlsx (Programming Sequence - initialization, runtime, shutdown)
+61.	System-specific analysis files (RF_LinkBudget.xlsx, Timing_Analysis.xlsx, etc.)
+
+Design Files:
+62.	block_diagram.json (machine-readable)
+63.	block_diagram.vsdx or block_diagram.drawio
+64.	netlist.edif (for EDA tool import)
+65.	design_constraints.json (layout rules, power specs, I/O standards)
+
+Code Files:
+C Implementation:
+•	device_driver.c + .h
+•	hal_interface.c + .h
+•	app_interface.c + .h
+•	utils.c + .h
+•	test_driver.c
+•	Makefile
+C++ Implementation:
+•	DeviceDriver.cpp + .hpp
+•	HardwareInterface.cpp + .hpp
+•	DeviceController.cpp + .hpp
+•	Utils.cpp + .hpp
+•	CMakeLists.txt
+Qt Application (if generated):
+•	libdevicecontrol/ (Qt library - 6-10 source files)
+•	ControlApp/ (GUI application - 8-12 source files)
+
+PCB Files (you create):
+•	Gerber files (7-15 files depending on layers)
+•	Drill files (2-6 files)
+•	Pick-and-place CSV
+•	Assembly drawing PDF
+•	Fabrication drawing PDF
+
+Reports:
+•	CODE_REVIEW.json (Quality score, issues, recommendations)
+•	COVERAGE_REPORT.html (Test coverage with line-by-line highlighting)
+•	STATIC_ANALYSIS.txt (Linter results, warnings, errors)
+•	validation_reports/ (Multiple validation logs from each phase)
+ 
+Common Questions
+Q1: Do I need to know how to code?
+A: No for Phases 1-6! Just chat naturally and make selections. Phase 7 requires HDL/firmware knowledge if using FPGA/MCU. Phase 8 generates all application code automatically.
+
+Q2: What types of systems can I design?
+A: Almost any electronic hardware: RF/wireless, motor control, power electronics, data acquisition, industrial control, high-speed digital, medical devices, automotive electronics, and more.
+
+Q3: Can I change components mid-process?
+A: Yes! Just say "Change processor to STM32H7" and AI updates BOM, power analysis, pin assignments, and all documents automatically.
+
+Q4: What if I don't have Xpedition for PCB?
+A: Use any tool! The EDIF netlist format is supported by Altium, KiCad (free), OrCAD, Eagle, and most professional EDA tools.
+
+Q5: Can I skip the FPGA/MCU phase?
+A: Yes, if your design doesn't use programmable logic. Just say "No programmable logic" or "Skip Phase 7".
+
+Q6: How much does this cost to run?
+A: Varies by complexity: Simple ($0.50-$1.00), Medium ($1.00-$2.00), Complex RF/high-speed ($2.00-$5.00), Very complex ($5.00-$10.00) from API calls.
+
+Q7: Can I run this multiple times to iterate?
+A: Yes! Common to run 3-8 times to converge on optimal design (baseline → optimize cost → optimize performance → refine manufacturability).
+
+Q8: What about thermal management?
+A: AI calculates thermal dissipation and provides: power per component, junction temperature estimates, heatsink recommendations, thermal via requirements, airflow requirements.
+
+Q9: Do I need domain expertise?
+A: Basic understanding helps, but AI handles complex calculations: RF matching/link budgets, power loop compensation, motor FOC algorithms, digital signal integrity, timing analysis.
+
+Q10: What about certification testing?
+A: AI identifies required certifications and estimates costs, but you must hire accredited test lab. Budget: FCC/CE ($10K-$30K), Medical ($50K-$200K+), Automotive ($30K-$150K+), Military ($100K-$500K+). Plan 2-6 months for testing.
+
+ 
+Critical Success Factors
+Universal Best Practices (All Systems):
+Requirements Definition:
+•	Clear, specific requirements upfront
+•	Realistic performance expectations
+•	Budget constraints communicated
+•	Timeline requirements stated
+•	Operating environment defined
+Component Selection:
+•	Choose components with good availability (not obsolete)
+•	Consider second-source options
+•	Check lead times
+•	Avoid single points of failure
+•	Plan for component aging and lifecycle
+Power Management:
+•	Proper power sequencing (prevents damage)
+•	Adequate current capability (1.5x nominal minimum)
+•	Low noise/ripple on sensitive supplies
+•	Overcurrent/overvoltage protection
+•	Power-good signals monitored
+Grounding:
+•	Solid ground planes (minimizes impedance)
+•	Single-point ground for mixed analog/digital
+•	Proper ground return paths
+•	Via stitching for EMI control
+•	Chassis ground properly connected
+Protection:
+•	ESD protection on all external interfaces
+•	Reverse polarity protection on power inputs
+•	Overcurrent limiting
+•	Thermal shutdown circuitry
+•	Transient suppression (TVS diodes)
+Testing:
+•	Test points on critical signals
+•	Debug headers (JTAG, UART, SPI)
+•	LED indicators for status
+•	Accessible programming interface
+•	Provision for current measurement
+
+System-Specific Critical Factors:
+For RF/Wireless Systems:
+•	50Ω impedance throughout (minimize reflections)
+•	Solid ground plane under RF section
+•	Via stitching creates RF shield
+•	Physical isolation from noisy digital
+•	Quality RF connectors
+•	Thermal management for PA
+For High-Speed Digital (>100MHz):
+•	Controlled impedance traces
+•	Length matching (strict for DDR)
+•	Minimize vias in high-speed paths
+•	Continuous ground return path
+•	Proper termination
+•	Signal integrity simulation before fab
+For Motor Control:
+•	Gate driver close to power devices (<2cm)
+•	Symmetric current sense traces
+•	Power and signal ground separation
+•	Thick copper for high-current (2oz+)
+•	Emergency stop circuit hardware
+For Power Electronics:
+•	Minimize hot loop (input cap → switch → output cap)
+•	Kelvin connections for current sense
+•	Proper gate drive (voltage, current, speed)
+•	Creepage/clearance for high voltage
+•	Load testing before deployment
+For Precision Analog:
+•	Guard rings around sensitive traces
+•	Star grounding from voltage reference
+•	Low-offset layout
+•	Shielding from digital noise
+•	Calibration provisions in design
+
+================================================================================
+
+The complete universal hardware design pipeline! The AI handles calculations, documentation, and code generation across RF, digital, motor control, power, analog, and any combination. You focus on requirements definition and the creative PCB layout and FPGA/MCU programming.
+
+Total automated time: ~4-5 minutes
+Total manual time: Varies by complexity (4-280+ hours)
+Total project time: Depends on your design complexity and experience
+
+The workflow is flexible - adapt it to your specific needs by skipping irrelevant phases or adding custom requirements!

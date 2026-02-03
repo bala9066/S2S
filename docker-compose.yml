@@ -1,0 +1,194 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # POSTGRESQL DATABASE
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: hardware_pipeline_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hardware_pipeline
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hardwarepipeline2026}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hardware_pipeline_network
+
+  # ==========================================
+  # N8N WORKFLOW AUTOMATION
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: hardware_pipeline_n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: hardware_pipeline
+      DB_POSTGRESDB_USER: postgres
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-hardwarepipeline2026}
+
+      # n8n Configuration
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD:-admin123}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+
+      # AI Provider Configuration
+      AI_PROVIDER_PREFERENCE: ${AI_PROVIDER_PREFERENCE:-user_select}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      GLM_API_KEY: ${GLM_API_KEY:-your_glm_api_key_here}
+      GROQ_API_KEY: ${GROQ_API_KEY:-your_groq_api_key_here}
+
+      # Hardware Pipeline Specific
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: hardware_pipeline
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hardwarepipeline2026}
+
+      # Playwright Configuration
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_TIMEOUT: 30000
+
+      # Execution Settings
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
+
+      # Timezone
+      GENERIC_TIMEZONE: Asia/Kolkata
+      TZ: Asia/Kolkata
+
+      # Node Settings
+      NODE_FUNCTION_ALLOW_BUILTIN: "*"
+      NODE_FUNCTION_ALLOW_EXTERNAL: "*"
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/home/node/.n8n/workflows
+      - ./outputs:/mnt/data/outputs
+      - ./component_cache:/mnt/data/component_cache
+    ports:
+      - "5678:5678"
+    networks:
+      - hardware_pipeline_network
+
+  # ==========================================
+  # PLAYWRIGHT SERVICE (Browser Automation + Scraper API)
+  # ==========================================
+  playwright:
+    image: mcr.microsoft.com/playwright/python:v1.40.0-jammy
+    container_name: hardware_pipeline_playwright
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: hardware_pipeline
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hardwarepipeline2026}
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      SCRAPER_API_PORT: 8000
+    volumes:
+      - ./playwright_scripts:/app/scripts
+      - ./component_scraper.py:/app/component_scraper.py:ro
+      - ./scraper_api.py:/app/scraper_api.py:ro
+      - ./n8n_workflow_import.py:/app/n8n_workflow_import.py:ro
+      - playwright_cache:/ms-playwright
+      - ./outputs:/mnt/data/outputs
+    ports:
+      - "8000:8000"
+    networks:
+      - hardware_pipeline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: [ "sh", "-c", "pip install playwright fastapi uvicorn psycopg2-binary && python -m uvicorn scraper_api:app --host 0.0.0.0 --port 8000" ]
+    # Scraper API serves component search requests from n8n
+
+
+    # ==========================================
+    # REDIS (Optional - for caching)
+    # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: hardware_pipeline_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hardware_pipeline_network
+    command: redis-server --appendonly yes
+
+  # ==========================================
+  # PGADMIN (Optional - Database Management UI)
+  # ==========================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hardware_pipeline_pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@hardwarepipeline.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - hardware_pipeline_network
+
+# ==========================================
+# VOLUMES
+# ==========================================
+volumes:
+  postgres_data:
+    name: hardware_pipeline_postgres_data
+  n8n_data:
+    name: hardware_pipeline_n8n_data
+  playwright_cache:
+    name: hardware_pipeline_playwright_cache
+  redis_data:
+    name: hardware_pipeline_redis_data
+  pgadmin_data:
+    name: hardware_pipeline_pgadmin_data
+
+# ==========================================
+# NETWORKS
+# ==========================================
+networks:
+  hardware_pipeline_network:
+    name: hardware_pipeline_network
+    driver: bridge
