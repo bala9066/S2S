@@ -98,7 +98,10 @@ services:
   # PLAYWRIGHT SERVICE (Browser Automation + Scraper API)
   # ==========================================
   playwright:
-    image: mcr.microsoft.com/playwright/python:v1.40.0-jammy
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: hardware_pipeline_playwright_custom
     container_name: hardware_pipeline_playwright
     restart: unless-stopped
     working_dir: /app
@@ -130,7 +133,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    command: [ "sh", "-c", "pip install playwright fastapi uvicorn psycopg2-binary && python -m uvicorn scraper_api:app --host 0.0.0.0 --port 8000" ]
+    # Command is now handled by Dockerfile CMD
     # Scraper API serves component search requests from n8n
 
 

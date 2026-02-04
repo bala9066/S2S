@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+
+WORKDIR /app
+
+# Install system dependencies if needed (none extra needed for basic playwright python)
+
+# Install Python dependencies once during build
+RUN pip install --no-cache-dir playwright fastapi uvicorn psycopg2-binary pydantic requests beautifulsoup4
+
+# Copy application files (optional fallback if volumes fail, but volumes usually override)
+COPY component_scraper.py /app/
+COPY scraper_api.py /app/
+COPY n8n_workflow_import.py /app/
+
+# Expose the API port
+EXPOSE 8000
+
+# Start the API server
+CMD ["python", "-m", "uvicorn", "scraper_api:app", "--host", "0.0.0.0", "--port", "8000"]

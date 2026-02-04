@@ -9,6 +9,25 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Detect Python command - prioritize Windows Python to avoid WSL issues
+# Check for Windows Python installations first
+if [ -f "/c/Users/HP/AppData/Local/Programs/Python/Python314/python.exe" ]; then
+  PYTHON_CMD="/c/Users/HP/AppData/Local/Programs/Python/Python314/python.exe"
+elif [ -f "/c/Users/HP/AppData/Local/Programs/Python/Python312/python.exe" ]; then
+  PYTHON_CMD="/c/Users/HP/AppData/Local/Programs/Python/Python312/python.exe"
+elif [ -f "/c/Users/HP/AppData/Local/Programs/Python/Python311/python.exe" ]; then
+  PYTHON_CMD="/c/Users/HP/AppData/Local/Programs/Python/Python311/python.exe"
+elif command -v python &> /dev/null && python --version &> /dev/null; then
+  PYTHON_CMD="python"
+elif command -v python3 &> /dev/null && python3 --version &> /dev/null; then
+  PYTHON_CMD="python3"
+else
+  echo -e "${RED}ERROR: Python not found${NC}"
+  exit 1
+fi
+
+echo "Using Python: $PYTHON_CMD"
+
 echo "════════════════════════════════════════════════════════════"
 echo "  PHASE 1 STATIC VALIDATION"
 echo "════════════════════════════════════════════════════════════"
@@ -61,12 +80,8 @@ echo ""
 echo "2. Validating JSON Files..."
 echo "────────────────────────────────────────────────────────────"
 
-if command -v python3 &> /dev/null; then
-  python3 -c "import json; json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json'))" 2>/dev/null
-  test_result $? "Phase1_Complete_Workflow_READY_TO_IMPORT.json is valid JSON"
-else
-  echo -e "${YELLOW}⚠️  SKIP: python3 not found${NC}"
-fi
+$PYTHON_CMD -c "import json; json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json', encoding='utf-8'))" 2>/dev/null
+test_result $? "Phase1_Complete_Workflow_READY_TO_IMPORT.json is valid JSON"
 
 echo ""
 
@@ -94,15 +109,11 @@ echo ""
 echo "4. Validating Python Files..."
 echo "────────────────────────────────────────────────────────────"
 
-if command -v python3 &> /dev/null; then
-  python3 -m py_compile component_scraper.py 2>/dev/null
-  test_result $? "component_scraper.py syntax valid"
+$PYTHON_CMD -m py_compile component_scraper.py 2>/dev/null
+test_result $? "component_scraper.py syntax valid"
 
-  python3 -m py_compile scraper_api.py 2>/dev/null
-  test_result $? "scraper_api.py syntax valid"
-else
-  echo -e "${YELLOW}⚠️  SKIP: python3 not found${NC}"
-fi
+$PYTHON_CMD -m py_compile scraper_api.py 2>/dev/null
+test_result $? "scraper_api.py syntax valid"
 
 echo ""
 
@@ -112,12 +123,8 @@ echo ""
 echo "5. Validating YAML Files..."
 echo "────────────────────────────────────────────────────────────"
 
-if command -v python3 &> /dev/null; then
-  python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))" 2>/dev/null
-  test_result $? "docker-compose.yml is valid YAML"
-else
-  echo -e "${YELLOW}⚠️  SKIP: python3 not found${NC}"
-fi
+$PYTHON_CMD -c "import yaml; yaml.safe_load(open('docker-compose.yml', encoding='utf-8'))" 2>/dev/null
+test_result $? "docker-compose.yml is valid YAML"
 
 echo ""
 
@@ -127,22 +134,20 @@ echo ""
 echo "6. Analyzing Workflow Structure..."
 echo "────────────────────────────────────────────────────────────"
 
-if command -v python3 &> /dev/null; then
-  NODE_COUNT=$(python3 -c "import json; data=json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json')); print(len(data.get('nodes', [])))" 2>/dev/null)
+NODE_COUNT=$($PYTHON_CMD -c "import json; data=json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json', encoding='utf-8')); print(len(data.get('nodes', [])))" 2>/dev/null)
 
-  if [ "$NODE_COUNT" -ge 15 ]; then
-    test_result 0 "Workflow has $NODE_COUNT nodes (expected 15+)"
-  else
-    test_result 1 "Workflow has $NODE_COUNT nodes (expected 15+)"
-  fi
+if [ "$NODE_COUNT" -ge 15 ]; then
+  test_result 0 "Workflow has $NODE_COUNT nodes (expected 15+)"
+else
+  test_result 1 "Workflow has $NODE_COUNT nodes (expected 15+)"
+fi
 
-  CONN_COUNT=$(python3 -c "import json; data=json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json')); print(len(data.get('connections', [])))" 2>/dev/null)
+CONN_COUNT=$($PYTHON_CMD -c "import json; data=json.load(open('Phase1_Complete_Workflow_READY_TO_IMPORT.json', encoding='utf-8')); conns=data.get('connections', {}); print(sum(len(v) for v in conns.values()) if isinstance(conns, dict) else len(conns))" 2>/dev/null)
 
-  if [ "$CONN_COUNT" -ge 10 ]; then
-    test_result 0 "Workflow has $CONN_COUNT connections (expected 10+)"
-  else
-    test_result 1 "Workflow has $CONN_COUNT connections (expected 10+)"
-  fi
+if [ "$CONN_COUNT" -ge 10 ]; then
+  test_result 0 "Workflow has $CONN_COUNT connections (expected 10+)"
+else
+  test_result 1 "Workflow has $CONN_COUNT connections (expected 10+)"
 fi
 
 echo ""
@@ -154,14 +159,23 @@ echo "7. Testing JavaScript Logic..."
 echo "────────────────────────────────────────────────────────────"
 
 if command -v node &> /dev/null; then
-  # Test improved_ai_prompt.js logic
+  # Test improved_ai_prompt.js logic - mock the $json variable that n8n provides
   cat > /tmp/test_ai_prompt.js << 'EOF'
-const systemType = 'Motor_Control';
-const requirements = 'Test motor controller with TMS320F28379D, 10kW power';
+// Mock the n8n $json context
+const $json = {
+  requirements: 'Test motor controller with TMS320F28379D, 10kW power',
+  system_type: 'Motor_Control'
+};
 
 // Load the improved prompt logic
 const fs = require('fs');
-eval(fs.readFileSync('improved_ai_prompt.js', 'utf8'));
+const code = fs.readFileSync('improved_ai_prompt.js', 'utf8');
+
+// Execute in a function context
+const result = eval('(function() { ' + code + ' })()');
+
+// Extract the prompt from the returned result
+const prompt = result && result.json && result.json.ai_prompt ? result.json.ai_prompt : '';
 
 // Check if prompt includes all required sections
 const expectedSections = [
@@ -174,7 +188,7 @@ const expectedSections = [
 let allPresent = true;
 for (const section of expectedSections) {
   if (!prompt.includes(section)) {
-    console.error(`Missing section: ${section}`);
+    console.error('Missing section:', section);
     allPresent = false;
   }
 }
@@ -183,6 +197,7 @@ if (allPresent && prompt.length > 2000) {
   console.log('SUCCESS');
   process.exit(0);
 } else {
+  console.error('Prompt length:', prompt.length);
   process.exit(1);
 }
 EOF
@@ -190,8 +205,9 @@ EOF
   node /tmp/test_ai_prompt.js 2>/dev/null
   test_result $? "AI prompt includes all required sections"
 
-  # Test block diagram generator logic
+  # Test block diagram generator logic - mock the $json variable that n8n provides
   cat > /tmp/test_diagram.js << 'EOF'
+// Mock the n8n $json context
 const $json = {
   parsed_requirements: {
     primary_components: {
@@ -215,18 +231,26 @@ const $json = {
   system_type: 'Motor_Control'
 };
 
-// Load and run diagram generator
+// Load diagram generator code
 const fs = require('fs');
-eval(fs.readFileSync('improved_block_diagram_generator.js', 'utf8'));
+const code = fs.readFileSync('improved_block_diagram_generator.js', 'utf8');
 
-const result = (function() {
-  // Execute the code
-  eval(fs.readFileSync('improved_block_diagram_generator.js', 'utf8'));
-  return { json: {} }; // Dummy return
-})();
-
-console.log('Diagram generator executes without errors');
-process.exit(0);
+try {
+  // Execute in a function context
+  const result = eval('(function() { ' + code + ' })()');
+  
+  // Verify it returns valid output
+  if (result && result.json) {
+    console.log('SUCCESS: Diagram generator executes without errors');
+    process.exit(0);
+  } else {
+    console.error('No valid result returned');
+    process.exit(1);
+  }
+} catch (e) {
+  console.error('Error:', e.message);
+  process.exit(1);
+}
 EOF
 
   node /tmp/test_diagram.js 2>/dev/null

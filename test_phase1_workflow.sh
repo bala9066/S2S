@@ -18,6 +18,21 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Detect Python command - prioritize Windows Python to avoid WSL issues
+if [ -f "/c/Users/HP/AppData/Local/Programs/Python/Python314/python.exe" ]; then
+  PYTHON_CMD="/c/Users/HP/AppData/Local/Programs/Python/Python314/python.exe"
+elif [ -f "/c/Users/HP/AppData/Local/Programs/Python/Python312/python.exe" ]; then
+  PYTHON_CMD="/c/Users/HP/AppData/Local/Programs/Python/Python312/python.exe"
+elif command -v python &> /dev/null && python --version &> /dev/null; then
+  PYTHON_CMD="python"
+elif command -v python3 &> /dev/null && python3 --version &> /dev/null; then
+  PYTHON_CMD="python3"
+else
+  echo -e "${RED}ERROR: Python not found${NC}"
+  exit 1
+fi
+echo "Using Python: $PYTHON_CMD"
+
 # Test counters
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -37,11 +52,11 @@ test_result() {
     fi
 }
 
-# Wait for service
+# Wait for service (HTTP)
 wait_for_service() {
     local SERVICE=$1
     local URL=$2
-    local MAX_WAIT=120
+    local MAX_WAIT=900
     local WAITED=0
 
     echo -ne "${BLUE}⏳ Waiting for $SERVICE to be ready...${NC}"
@@ -60,6 +75,28 @@ wait_for_service() {
     return 1
 }
 
+# Wait for PostgreSQL (Health Check)
+wait_for_postgres() {
+    local MAX_WAIT=900
+    local WAITED=0
+
+    echo -ne "${BLUE}⏳ Waiting for PostgreSQL to be ready...${NC}"
+
+    while [ $WAITED -lt $MAX_WAIT ]; do
+        HEALTH=$(docker inspect --format '{{.State.Health.Status}}' hardware_pipeline_postgres 2>/dev/null)
+        if [ "$HEALTH" == "healthy" ]; then
+            echo -e "\r${GREEN}✅ PostgreSQL is ready!${NC}                    "
+            return 0
+        fi
+        sleep 2
+        WAITED=$((WAITED + 2))
+        echo -ne "\r${BLUE}⏳ Waiting for PostgreSQL... ${WAITED}s (Status: $HEALTH)${NC}"
+    done
+
+    echo -e "\r${RED}❌ PostgreSQL failed to start within ${MAX_WAIT}s${NC}"
+    return 1
+}
+
 # ============================================================
 # TEST 1: Docker Services
 # ============================================================
@@ -68,10 +105,11 @@ echo "TEST 1: Docker Services Startup"
 echo "────────────────────────────────────────────────────────────"
 
 # Check if services are already running
+# Check if services are already running
 if docker compose ps | grep -q "Up"; then
-    echo -e "${YELLOW}⚠️  Services already running. Stopping first...${NC}"
-    docker compose down
-    sleep 2
+    echo -e "${YELLOW}⚠️  Services already running. Using existing services...${NC}"
+    # docker compose down
+    # sleep 2
 fi
 
 # Start services
@@ -79,7 +117,7 @@ echo "Starting Docker services..."
 docker compose up -d
 
 # Wait for PostgreSQL
-if wait_for_service "PostgreSQL" "localhost:5432"; then
+if wait_for_postgres; then
     test_result 0 "PostgreSQL started successfully"
 else
     test_result 1 "PostgreSQL failed to start"
@@ -119,7 +157,7 @@ else
 fi
 
 # Test database connection from Python
-if python3 -c "
+if $PYTHON_CMD -c "
 import psycopg2
 try:
     conn = psycopg2.connect(
@@ -169,7 +207,7 @@ SEARCH_RESPONSE=$(curl -s -X POST http://localhost:8000/api/scrape \
   -d '{"search_term": "STM32F4", "category": "processor", "use_cache": true}')
 
 if echo "$SEARCH_RESPONSE" | grep -q "components"; then
-    COMPONENT_COUNT=$(echo "$SEARCH_RESPONSE" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data.get('components', [])))")
+    COMPONENT_COUNT=$(echo "$SEARCH_RESPONSE" | $PYTHON_CMD -c "import sys, json; data=json.load(sys.stdin); print(len(data.get('components', [])))")
     test_result 0 "Component search working (found $COMPONENT_COUNT components)"
 else
     test_result 1 "Component search failed"
@@ -214,7 +252,7 @@ echo "TEST 5: Workflow Structure Validation"
 echo "────────────────────────────────────────────────────────────"
 
 # Validate workflow structure
-WORKFLOW_VALID=$(python3 << 'EOF'
+WORKFLOW_VALID=$($PYTHON_CMD << 'EOF'
 import json
 import sys
 
@@ -273,7 +311,7 @@ else
 fi
 
 # Validate JavaScript nodes
-JS_VALIDATION=$(python3 << 'EOF'
+JS_VALIDATION=$($PYTHON_CMD << 'EOF'
 import json
 
 with open('Phase1_Complete_Workflow_READY_TO_IMPORT.json') as f:
@@ -301,7 +339,7 @@ REQUIREMENTS="Design a 3-phase motor controller with TMS320F28379D DSP, 10kW out
 echo "  Input: $REQUIREMENTS"
 
 # Step 2: System type detection (simulate JavaScript)
-SYSTEM_TYPE=$(python3 << EOF
+SYSTEM_TYPE=$($PYTHON_CMD << EOF
 req = "$REQUIREMENTS".lower()
 if 'motor' in req or '3-phase' in req:
     print('Motor_Control')
@@ -325,7 +363,7 @@ for CATEGORY in "processor" "power_regulator" "gate_driver"; do
       -H "Content-Type: application/json" \
       -d "{\"search_term\": \"test\", \"category\": \"$CATEGORY\", \"use_cache\": true}")
 
-    COUNT=$(echo "$RESPONSE" | python3 -c "import sys, json; print(len(json.load(sys.stdin).get('components', [])))" 2>/dev/null || echo "0")
+    COUNT=$(echo "$RESPONSE" | $PYTHON_CMD -c "import sys, json; print(len(json.load(sys.stdin).get('components', [])))" 2>/dev/null || echo "0")
     COMPONENTS_FOUND=$((COMPONENTS_FOUND + COUNT))
 done
 
