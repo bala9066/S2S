@@ -104,10 +104,13 @@ Hardware Pipeline is an AI-powered automation system that transforms hardware de
    - **95% Component Completeness**: Reduces missing components by 90%
 2. Automatic generation of 50-100 page Hardware Requirements Specification (HRS)
 3. Compliance validation (RoHS, REACH, FCC, CE, Medical, Automotive, Military)
-4. Logical netlist generation from block diagrams and schematic input (before PCB design)
+4. Logical netlist generation from block diagrams (before schematic/PCB design)
+   - Netlist generated from AI block diagram, not extracted from schematics
+   - Engineers get validated netlist BEFORE starting PCB layout
+   - Eliminates traditional workflow where netlists are extracted from manual schematics
 
 **Phase 5 (Manual - User PCB Design) - FUTURE SCOPE:**
-Engineers design PCB layout in their preferred EDA tool using the schematic input.
+Engineers import the AI-generated netlist into their preferred EDA tool (Altium/Xpedition/KiCad), which can auto-generate the schematic. Then they perform PCB layout.
 Currently out of automation scope; planned for Phase 2 development.
 
 **Phase 6 (Automated - 40 seconds):**
@@ -131,7 +134,7 @@ Currently out of automation scope; planned for Phase 2 development.
    - Security vulnerability scanning
    - Automated test generation and coverage analysis
 
-**Key Innovation:** The system generates the logical netlist BEFORE PCB design, providing engineers with a validated starting point. This eliminates the traditional workflow where netlists are extracted from schematics, reducing errors by 85%.
+**Key Innovation - Paradigm Shift in Netlist Generation:** Traditional EDA tools extract netlists FROM completed schematics. Hardware Pipeline reverses this: it generates the netlist FROM the AI-created block diagram BEFORE any schematic work. Engineers receive a validated, AI-reviewed netlist as their starting point for PCB design. They import this netlist into their EDA tool (Altium/Xpedition/KiCad), which can auto-generate the schematic. This eliminates 85% of netlist errors that occur during manual schematic capture and ensures pin-by-pin connectivity is validated before PCB layout begins.
 
 **Revolutionary AI Inference Engine:** Our enhanced prompt system doesn't just extract what users specify - it intelligently infers what they need. For example, "Design a motor controller" automatically generates:
 - Complete power distribution tree (input → protection → 4+ regulated rails with current specs)
@@ -455,7 +458,7 @@ docker compose up -d  # Starts PostgreSQL, n8n, Playwright, Redis, pgAdmin
 
 **How is this a novel application to YOUR specific domain problem?**
 
-1. **Pre-PCB Netlist Generation:** Unlike traditional EDA tools that extract netlists FROM schematics, Hardware Pipeline generates logical netlists from block diagrams and schematic input BEFORE PCB design. This is a paradigm shift - engineers get a validated, AI-reviewed connectivity map before investing weeks in layout.
+1. **Pre-PCB Netlist Generation:** Unlike traditional EDA tools that extract netlists FROM schematics, Hardware Pipeline generates logical netlists FROM AI-created block diagrams BEFORE any schematic or PCB work begins. This is a paradigm shift - engineers get a validated, AI-reviewed connectivity map (EDIF format) that they import into their EDA tool as the starting point. The EDA tool can auto-generate the schematic from this netlist, eliminating manual schematic capture errors.
 
 2. **Unified Hardware-Software Pipeline:** First tool to bridge the complete gap from initial concept to working software drivers with automated code review. Most tools stop at hardware design; we continue through to Qt applications, test suites, and automated quality assurance.
 
