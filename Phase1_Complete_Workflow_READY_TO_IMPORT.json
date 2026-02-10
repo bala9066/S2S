@@ -158,10 +158,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://playwright:8000/api/scrape",
+        "url": "http://component_api:8001/api/search",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true }) }}",
+        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true, sources: [\"digikey\", \"mouser\"], limit_per_source: 10 }) }}",
         "options": {
           "timeout": 60000
         }
