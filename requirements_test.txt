@@ -1,0 +1,4 @@
+# Phase 1 E2E Testing Dependencies
+requests>=2.31.0
+docker>=7.0.0
+colorama>=0.4.6
