@@ -134,9 +134,44 @@ services:
     # Scraper API serves component search requests from n8n
 
 
-    # ==========================================
-    # REDIS (Optional - for caching)
-    # ==========================================
+  # ==========================================
+  # PHASE 8 - SOFTWARE GENERATION SERVICE
+  # ==========================================
+  phase8_codegen:
+    image: python:3.11-slim
+    container_name: hardware_pipeline_phase8
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: hardware_pipeline
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hardwarepipeline2026}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      PHASE8_API_PORT: 8002
+    volumes:
+      - ./phase8_codegen.py:/app/phase8_codegen.py:ro
+      - ./phase8_api.py:/app/phase8_api.py:ro
+      - ./outputs:/mnt/data/outputs
+    ports:
+      - "8002:8002"
+    networks:
+      - hardware_pipeline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command: [ "sh", "-c", "pip install fastapi uvicorn psycopg2-binary requests pydantic python-dotenv && python -m uvicorn phase8_api:app --host 0.0.0.0 --port 8002" ]
+
+  # ==========================================
+  # REDIS (Optional - for caching)
+  # ==========================================
   redis:
     image: redis:7-alpine
     container_name: hardware_pipeline_redis

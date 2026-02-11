@@ -1,0 +1,193 @@
+{
+  "name": "Phase_8_Software_Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "p8-node-001",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "phase8-software-generation"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// VALIDATE PHASE 8 INPUT\n// Expects prior phase data or manual trigger\n// ==========================================\n\nconst chatMessage = $input.item.json.chatInput || $input.item.json.input || '';\n\n// Check for approval responses\nconst msgLower = chatMessage.toLowerCase();\nconst isApproval = msgLower.includes('approve') || msgLower.includes('code approved') || msgLower.includes('generate final');\nconst isModify = msgLower.includes('modify') || msgLower.includes('change') || msgLower.includes('add');\n\nif (isApproval) {\n  return { json: { action: 'approve', message: chatMessage } };\n}\nif (isModify) {\n  return { json: { action: 'modify', message: chatMessage } };\n}\n\n// Parse project context from prior phases or chat input\nlet projectData = {};\ntry {\n  // Try to parse JSON from message (piped from Phase 4/6)\n  const jsonMatch = chatMessage.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    projectData = JSON.parse(jsonMatch[0]);\n  }\n} catch(e) { /* not JSON input */ }\n\nconst projectName = projectData.project_name || 'Project_' + Date.now();\nconst systemType = projectData.system_type || 'Digital_Controller';\n\n// Auto-detect system type from text if not in JSON\nlet detectedType = systemType;\nif (!projectData.system_type) {\n  const req = chatMessage.toLowerCase();\n  if (req.includes('motor') || req.includes('inverter') || req.includes('bldc')) detectedType = 'Motor_Control';\n  else if (req.includes('rf') || req.includes('wireless') || req.includes('antenna')) detectedType = 'RF_Wireless';\n  else if (req.includes('power supply') || req.includes('buck') || req.includes('boost')) detectedType = 'Power_Electronics';\n  else if (req.includes('sensor') || req.includes('adc') || req.includes('measurement')) detectedType = 'Sensor_System';\n  else if (req.includes('plc') || req.includes('industrial') || req.includes('modbus')) detectedType = 'Industrial_Control';\n}\n\nreturn {\n  json: {\n    action: 'generate',\n    project_name: projectName,\n    system_type: detectedType,\n    original_requirements: projectData.original_requirements || chatMessage,\n    parsed_requirements: projectData.parsed_requirements || {},\n    block_diagram: projectData.block_diagram || {},\n    bom: projectData.bom || [],\n    glr: projectData.glr || {},\n    project_id: projectData.project_id || null\n  }\n};"
+      },
+      "id": "p8-node-002",
+      "name": "Validate Phase 8 Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "value2": "generate"
+            }
+          ]
+        }
+      },
+      "id": "p8-node-003",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are an expert embedded systems architect. Given these hardware requirements, generate a complete software architecture specification.\n\nProject: {{ $json.project_name }}\nSystem Type: {{ $json.system_type }}\nRequirements: {{ $json.original_requirements }}\nParsed Specs: {{ JSON.stringify($json.parsed_requirements) }}\n\nReturn ONLY valid JSON:\n{\n  \"parsed_requirements\": {\n    \"primary_components\": {\n      \"processor\": {\"type\": \"MCU/DSP/FPGA\", \"specific_part\": \"part_number\", \"required_features\": [\"feature1\"], \"package\": \"LQFP\"},\n      \"power\": {\"input_voltage\": \"12V\", \"output_power\": \"10W\", \"rails_needed\": [\"3.3V\", \"5V\"]},\n      \"interfaces\": [\"SPI\", \"I2C\", \"UART\", \"CAN\"]\n    },\n    \"key_components_needed\": [{\"category\": \"processor\", \"description\": \"desc\", \"quantity\": 1}]\n  },\n  \"software_architecture\": {\n    \"modules\": [\"HAL\", \"Driver\", \"Application\"],\n    \"design_pattern\": \"layered\",\n    \"rtos_needed\": false\n  }\n}\n\nRULES:\n1. Identify ALL peripherals the processor needs to control\n2. Include specific interfaces from the requirements\n3. Be specific about part numbers and features\n4. Return ONLY JSON, no markdown",
+        "options": {}
+      },
+      "id": "p8-node-004",
+      "name": "AI: Analyze Software Requirements",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// EXTRACT AI ANALYSIS AND MERGE WITH INPUT\n// ==========================================\n\nconst aiResponse = $input.item.json;\nconst validatedInput = $('Validate Phase 8 Input').item.json;\nlet aiParsed = {};\n\ntry {\n  let content = aiResponse.output || aiResponse.text || '';\n  if (typeof content === 'object') {\n    aiParsed = content;\n  } else {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) aiParsed = JSON.parse(jsonMatch[0]);\n  }\n} catch(e) {\n  console.log('[Phase 8] AI parse warning:', e.message);\n}\n\n// Merge: prefer prior phase data, fill gaps with AI analysis\nconst merged = {\n  project_name: validatedInput.project_name,\n  system_type: validatedInput.system_type,\n  original_requirements: validatedInput.original_requirements,\n  parsed_requirements: validatedInput.parsed_requirements && Object.keys(validatedInput.parsed_requirements).length > 0\n    ? validatedInput.parsed_requirements\n    : (aiParsed.parsed_requirements || {\n        primary_components: {\n          processor: { type: 'MCU', specific_part: 'STM32F407VGT6', required_features: ['GPIO','ADC','PWM'], package: 'LQFP' },\n          power: { input_voltage: '12V', output_power: '10W', rails_needed: ['3.3V','5V'] },\n          interfaces: ['SPI','I2C','UART']\n        }\n      }),\n  block_diagram: validatedInput.block_diagram || {},\n  bom: validatedInput.bom || [],\n  glr: validatedInput.glr || {},\n  project_id: validatedInput.project_id,\n  software_architecture: aiParsed.software_architecture || {}\n};\n\nreturn { json: merged };"
+      },
+      "id": "p8-node-005",
+      "name": "Merge AI Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://phase8_codegen:8002/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "p8-node-006",
+      "name": "Generate Code (API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// FORMAT CODE PREVIEW FOR USER\n// ==========================================\n\nconst result = $input.item.json;\n\nif (!result.success) {\n  throw new Error('Code generation failed: ' + (result.error || 'unknown error'));\n}\n\n// Build preview of generated files\nconst files = result.files || [];\nconst fileList = files.map((f, i) =>\n  `${i+1}. **${f.filename}** (${f.language}, ${f.line_count} lines) - ${f.category}`\n).join('\\n');\n\n// Show snippet of main driver code\nconst driverFile = files.find(f => f.filename === 'device_driver.c') || {};\nconst halFile = files.find(f => f.filename === 'hal_interface.h') || {};\n\nconst driverPreview = (driverFile.content || '').substring(0, 800);\nconst halPreview = (halFile.content || '').substring(0, 600);\n\n// Code review summary\nconst review = result.code_review || {};\n\nconst preview = `\n## Phase 8: Software Generation Complete\n\n**Project:** ${result.project_name}\n**System:** ${result.system_type}\n**Processor:** ${result.processor}\n**Files Generated:** ${result.file_count}\n**Total Lines:** ${result.total_lines}\n**Generation Time:** ${result.generation_time_seconds}s\n\n### Generated Files\n${fileList}\n\n### Code Review\n- **Score:** ${review.score || 'N/A'}/100\n- **Status:** ${review.passed ? 'PASSED' : 'ISSUES FOUND'}\n${(review.suggestions || []).map(s => '- ' + s).join('\\n')}\n\n### Driver Preview\n\\`\\`\\`c\n${driverPreview}\n\\`\\`\\`\n\n### HAL Interface Preview\n\\`\\`\\`c\n${halPreview}\n\\`\\`\\`\n\n---\nType **\"Code approved\"** to finalize, or describe modifications needed.\n`;\n\nreturn {\n  json: {\n    ...result,\n    preview: preview,\n    awaiting_approval: true\n  }\n};"
+      },
+      "id": "p8-node-007",
+      "name": "Format Code Preview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseText": "={{ $json.preview }}"
+      },
+      "id": "p8-node-008",
+      "name": "Show Preview & Wait",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// HANDLE APPROVAL / MODIFICATION REQUEST\n// ==========================================\n\nconst input = $('Validate Phase 8 Input').item.json;\nconst action = input.action;\n\nif (action === 'approve') {\n  return {\n    json: {\n      action: 'finalize',\n      message: 'Code approved. Generating final package...'\n    }\n  };\n} else {\n  // Modification requested\n  return {\n    json: {\n      action: 'modify',\n      modification_request: input.message,\n      message: 'Modification noted. Re-generating with changes...'\n    }\n  };\n}"
+      },
+      "id": "p8-node-009",
+      "name": "Handle Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==========================================\n// FINALIZE AND RETURN COMPLETE PACKAGE\n// ==========================================\n\nconst action = $json.action;\n\nif (action === 'finalize') {\n  const summary = `\n## Phase 8 Complete\n\nAll software artifacts have been generated and approved.\nFiles are ready for download and integration.\n\n### Next Steps\n1. Download the generated code package\n2. Import into your IDE (VS Code, CLion, STM32CubeIDE)\n3. Implement TODO sections for your specific hardware\n4. Run \\`make test\\` to verify the test suite\n5. Build with \\`make\\` (C) or \\`cmake\\` (C++)\n\nPhase 8 execution complete.\n`;\n  return { json: { message: summary, status: 'completed' } };\n} else {\n  return { json: { message: 'Please provide your requirements to generate code, or type \"Code approved\" to finalize.', status: 'waiting' } };\n}"
+      },
+      "id": "p8-node-010",
+      "name": "Finalize Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseText": "={{ $json.message }}"
+      },
+      "id": "p8-node-011",
+      "name": "Return Final Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1240, 500]
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [{ "node": "Validate Phase 8 Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate Phase 8 Input": {
+      "main": [
+        [{ "node": "Route Action", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [{ "node": "AI: Analyze Software Requirements", "type": "main", "index": 0 }],
+        [{ "node": "Handle Approval", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI: Analyze Software Requirements": {
+      "main": [
+        [{ "node": "Merge AI Analysis", "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge AI Analysis": {
+      "main": [
+        [{ "node": "Generate Code (API)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Generate Code (API)": {
+      "main": [
+        [{ "node": "Format Code Preview", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Code Preview": {
+      "main": [
+        [{ "node": "Show Preview & Wait", "type": "main", "index": 0 }]
+      ]
+    },
+    "Handle Approval": {
+      "main": [
+        [{ "node": "Finalize Package", "type": "main", "index": 0 }]
+      ]
+    },
+    "Finalize Package": {
+      "main": [
+        [{ "node": "Return Final Response", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    { "name": "Phase 8" },
+    { "name": "Software Generation" },
+    { "name": "Hardware Pipeline" }
+  ]
+}
