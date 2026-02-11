@@ -407,6 +407,50 @@ FOR EACH ROW
 EXECUTE FUNCTION update_bom_extended_price();
 
 -- ==========================================
+-- TABLE: generated_code
+-- Stores Phase 8 generated software artifacts
+-- ==========================================
+CREATE TABLE IF NOT EXISTS generated_code (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    filename VARCHAR(200) NOT NULL,
+    language VARCHAR(20) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    line_count INTEGER DEFAULT 0,
+    checksum VARCHAR(64),
+    version INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(project_id, filename, version)
+);
+
+CREATE INDEX idx_generated_code_project_id ON generated_code(project_id);
+CREATE INDEX idx_generated_code_category ON generated_code(category);
+CREATE INDEX idx_generated_code_language ON generated_code(language);
+
+COMMENT ON TABLE generated_code IS 'Phase 8 generated source files (C, C++, tests, build)';
+
+-- ==========================================
+-- TABLE: code_reviews
+-- Stores AI code review results
+-- ==========================================
+CREATE TABLE IF NOT EXISTS code_reviews (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    score INTEGER CHECK (score >= 0 AND score <= 100),
+    passed BOOLEAN DEFAULT TRUE,
+    issues JSONB DEFAULT '[]',
+    suggestions JSONB DEFAULT '[]',
+    reviewed_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_code_reviews_project_id ON code_reviews(project_id);
+CREATE INDEX idx_code_reviews_score ON code_reviews(score);
+
+COMMENT ON TABLE code_reviews IS 'Phase 8 AI code review results';
+
+-- ==========================================
 -- SEED DATA (Optional - for testing)
 -- ==========================================
 
@@ -460,11 +504,11 @@ BEGIN
     RAISE NOTICE '============================================';
     RAISE NOTICE 'Hardware Pipeline Database Initialized';
     RAISE NOTICE '============================================';
-    RAISE NOTICE 'Tables created: 11';
+    RAISE NOTICE 'Tables created: 13';
     RAISE NOTICE 'Views created: 2';
     RAISE NOTICE 'Functions created: 3';
     RAISE NOTICE 'Triggers created: 2';
     RAISE NOTICE '============================================';
-    RAISE NOTICE 'Database ready for Hardware Pipeline Phase 1';
+    RAISE NOTICE 'Database ready for Hardware Pipeline Phase 1-8';
     RAISE NOTICE '============================================';
 END $$;
