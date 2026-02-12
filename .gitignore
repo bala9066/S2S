@@ -103,6 +103,7 @@ htmlcov/
 *.json
 !*.json.example
 !Phase1_Complete_Workflow_READY_TO_IMPORT.json
+!debug_digikey.py
 debug_js.js
 make_test.js
 test_syntax.js
