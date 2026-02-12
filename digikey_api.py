@@ -26,33 +26,112 @@ class DigiKeyAPI:
 
     def _get_access_token(self) -> str:
         """
-        Get OAuth2 access token
-        DigiKey uses client credentials flow
+        Get OAuth2 access token.
+        Tries in order:
+        1. In-memory cached token
+        2. Client credentials flow (2-legged, no browser)
+        3. Stored token file from 3-legged flow
+        4. Refresh token from stored file
         """
-        # Check if token is still valid
+        import json
+
+        # 1. Check if in-memory token is still valid
         if self.access_token and self.token_expires_at:
             if datetime.now() < self.token_expires_at:
                 return self.access_token
 
-        # Request new token
-        token_url = f'{self.base_url}/v1/oauth2/token'
+        # 2. Try client_credentials flow first (no browser needed)
+        try:
+            token = self._client_credentials_flow()
+            if token:
+                return token
+        except Exception:
+            pass  # Fall through to stored tokens
 
+        # 3. Load stored tokens from file (from 3-legged auth)
+        token_file = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  ".digikey_token.json")
+        if not os.path.exists(token_file):
+            raise Exception(
+                "DigiKey client_credentials failed and no stored tokens. "
+                "Run 'python digikey_auth.py' for 3-legged OAuth."
+            )
+
+        with open(token_file, "r") as f:
+            token_data = json.load(f)
+
+        # Check if stored access token is still valid
+        expires_at_str = token_data.get("expires_at")
+        if expires_at_str:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.now() < expires_at:
+                self.access_token = token_data["access_token"]
+                self.token_expires_at = expires_at
+                return self.access_token
+
+        # 4. Access token expired — use refresh token
+        refresh_token = token_data.get("refresh_token")
+        if not refresh_token:
+            raise Exception(
+                "DigiKey access token expired and no refresh token available. "
+                "Run 'python digikey_auth.py' again."
+            )
+
+        token_url = f'{self.base_url}/v1/oauth2/token'
         data = {
             'client_id': self.client_id,
             'client_secret': self.client_secret,
-            'grant_type': 'client_credentials'
+            'refresh_token': refresh_token,
+            'grant_type': 'refresh_token',
         }
 
-        response = requests.post(token_url, data=data)
-        response.raise_for_status()
+        response = requests.post(token_url, data=data, timeout=15)
+        if response.status_code != 200:
+            raise Exception(
+                f"DigiKey token refresh failed ({response.status_code}): "
+                f"{response.text[:200]}. Run 'python digikey_auth.py' again."
+            )
+
+        new_token_data = response.json()
+
+        # Save refreshed tokens
+        expires_in = new_token_data.get('expires_in', 3600)
+        new_token_data["expires_at"] = (
+            datetime.now() + timedelta(seconds=expires_in)
+        ).isoformat()
+        new_token_data["saved_at"] = datetime.now().isoformat()
+
+        with open(token_file, "w") as f:
+            json.dump(new_token_data, f, indent=2)
+
+        self.access_token = new_token_data['access_token']
+        self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 60)
+        return self.access_token
+
+    def _client_credentials_flow(self) -> Optional[str]:
+        """
+        Try OAuth2 client_credentials grant (2-legged, no browser needed).
+        Works for DigiKey API v4 Product Search endpoints.
+        """
+        if not self.client_id or not self.client_secret:
+            return None
+
+        token_url = f'{self.base_url}/v1/oauth2/token'
+        data = {
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
+            'grant_type': 'client_credentials',
+        }
+
+        response = requests.post(token_url, data=data, timeout=15)
+        if response.status_code != 200:
+            return None
 
         token_data = response.json()
+        expires_in = token_data.get('expires_in', 3600)
+
         self.access_token = token_data['access_token']
-
-        # Token expires in X seconds, store expiry time
-        expires_in = token_data.get('expires_in', 3600)  # Default 1 hour
-        self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 60)  # 60s buffer
-
+        self.token_expires_at = datetime.now() + timedelta(seconds=expires_in - 60)
         return self.access_token
 
     def search_products(

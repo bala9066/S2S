@@ -5,60 +5,71 @@
       "parameters": {
         "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345601",
+      "id": "66d16a28-934b-462e-9a5b-b6dbbd064f8c",
       "name": "Chat Trigger",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
       "position": [
-        240,
-        400
+        2000,
+        1968
       ],
       "webhookId": "phase1-chat-hardware-pipeline"
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// VALIDATE INPUT AND DETECT SYSTEM TYPE\n// Universal for all hardware systems\n// ==========================================\n\nconst chatMessage = $input.item.json.chatInput || $input.item.json.input || '';\n\n// Check if this is initial requirements or approval response\nconst isApproval = chatMessage.toLowerCase().includes('approve') || \n                   chatMessage.toLowerCase().includes('reject') ||\n                   chatMessage.toLowerCase().includes('modify');\n\nif (isApproval) {\n  // Handle approval - pass through\n  return {\n    json: {\n      is_approval: true,\n      approval_action: chatMessage.toLowerCase().includes('approve') ? 'approve' : \n                       chatMessage.toLowerCase().includes('reject') ? 'reject' : 'modify',\n      message: chatMessage\n    }\n  };\n}\n\n// Initial requirements input\nconst requirements = chatMessage.trim();\n\nif (!requirements || requirements.length < 30) {\n  throw new Error('\u274c Requirements must be at least 30 characters.\\n\\nPlease provide detailed hardware design requirements.\\n\\nExample:\\n\"Design a 3-phase motor controller with TMS320F28379D DSP, 10kW output power, 48V DC input, 0-400Hz output frequency, Ethernet interface for monitoring, current sensing, and temperature protection.\"');\n}\n\n// Generate project name from requirements\nconst projectName = 'Project_' + Date.now();\n\n// Auto-detect system type\nconst reqLower = requirements.toLowerCase();\nlet systemType = 'Digital_Controller'; // default\n\nif (reqLower.includes('rf') || reqLower.includes('wireless') || reqLower.includes('ghz') || \n    reqLower.includes('antenna') || reqLower.includes('transceiver') || reqLower.includes('frequency')) {\n  systemType = 'RF_Wireless';\n} else if (reqLower.includes('motor') || reqLower.includes('inverter') || reqLower.includes('3-phase') || \n           reqLower.includes('bldc') || reqLower.includes('servo') || reqLower.includes('gate driver')) {\n  systemType = 'Motor_Control';\n} else if (reqLower.includes('power supply') || reqLower.includes('ac/dc') || reqLower.includes('dc/dc') || \n           reqLower.includes('rectifier') || reqLower.includes('buck') || reqLower.includes('boost')) {\n  systemType = 'Power_Electronics';\n} else if (reqLower.includes('sensor') || reqLower.includes('adc') || reqLower.includes('measurement') || \n           reqLower.includes('amplifier') || reqLower.includes('precision')) {\n  systemType = 'Sensor_System';\n} else if (reqLower.includes('plc') || reqLower.includes('industrial') || reqLower.includes('modbus') || \n           reqLower.includes('profibus') || reqLower.includes('fieldbus') || reqLower.includes('24v')) {\n  systemType = 'Industrial_Control';\n} else if (reqLower.includes('fpga') || reqLower.includes('xilinx') || reqLower.includes('altera') || \n           reqLower.includes('ddr') || reqLower.includes('ethernet') || reqLower.includes('mcu')) {\n  systemType = 'Digital_Controller';\n}\n\nconsole.log(`[PHASE 1] Detected System Type: ${systemType}`);\nconsole.log(`[PHASE 1] Requirements length: ${requirements.length} chars`);\n\nreturn {\n  json: {\n    is_approval: false,\n    requirements: requirements,\n    project_name: projectName,\n    system_type: systemType,\n    timestamp: Date.now(),\n    phase: 1,\n    status: 'requirements_received'\n  }\n};"
+        "jsCode": "const chatMessage = $input.item.json.chatInput || $input.item.json.input || '';\nconst sessionId = $input.item.json.sessionId || 'session_' + Date.now();\n\nconst isApproval = chatMessage.toLowerCase().includes('approve') || \n                   chatMessage.toLowerCase().includes('reject') ||\n                   chatMessage.toLowerCase().includes('modify');\n\nif (isApproval) {\n  return {\n    json: {\n      is_approval: true,\n      approval_action: chatMessage.toLowerCase().includes('approve') ? 'approve' : \n                       chatMessage.toLowerCase().includes('reject') ? 'reject' : 'modify',\n      message: chatMessage,\n      session_id: sessionId\n    }\n  };\n}\n\nconst requirements = chatMessage.trim();\n\nif (!requirements || requirements.length < 30) {\n  throw new Error('Requirements must be at least 30 characters.');\n}\n\nconst projectName = 'Project_' + Date.now();\nconst reqLower = requirements.toLowerCase();\nlet systemType = 'Digital_Controller';\n\nif (reqLower.includes('rf') || reqLower.includes('wireless') || reqLower.includes('ghz')) {\n  systemType = 'RF_Wireless';\n} else if (reqLower.includes('motor') || reqLower.includes('inverter') || reqLower.includes('3-phase')) {\n  systemType = 'Motor_Control';\n} else if (reqLower.includes('power supply') || reqLower.includes('dc/dc') || reqLower.includes('buck')) {\n  systemType = 'Power_Electronics';\n} else if (reqLower.includes('fpga') || reqLower.includes('xilinx') || reqLower.includes('mcu')) {\n  systemType = 'Digital_Controller';\n}\n\nreturn {\n  json: {\n    is_approval: false,\n    requirements: requirements,\n    project_name: projectName,\n    system_type: systemType,\n    session_id: sessionId,\n    timestamp: Date.now()\n  }\n};"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345602",
+      "id": "a7ce2b81-a915-4b29-93d6-3b69303cf861",
       "name": "Validate Input & Detect Type",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
-        400
+        2208,
+        1968
       ]
     },
     {
       "parameters": {
         "conditions": {
-          "boolean": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
             {
-              "value1": "={{ $json.is_approval }}",
-              "value2": false
+              "leftValue": "={{ $json.is_approval }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345603",
+      "id": "ec4bedaa-ec88-4947-b4a6-6b178718dd57",
       "name": "Is This Approval?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        640,
-        400
+        2400,
+        1968
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// BUILD AI PROMPT FOR REQUIREMENTS PARSING\n// ==========================================\n\nconst requirements = $json.requirements;\nconst systemType = $json.system_type;\n\nconst prompt = `You are a hardware design expert. Parse these requirements and extract structured data.\n\nSYSTEM TYPE DETECTED: ${systemType}\nREQUIREMENTS:\n${requirements}\n\nExtract and return ONLY valid JSON (no markdown, no explanation):\n\n{\n  \"system_type\": \"${systemType}\",\n  \"primary_components\": {\n    \"processor\": {\n      \"type\": \"FPGA/MCU/DSP/CPU\",\n      \"specific_part\": \"part number if mentioned\",\n      \"required_features\": [\"features needed\"],\n      \"package\": \"package type\"\n    },\n    \"power\": {\n      \"input_voltage\": \"input voltage\",\n      \"output_power\": \"output power\",\n      \"rails_needed\": [\"list voltage rails like 3.3V, 1.8V, etc\"]\n    },\n    \"interfaces\": [\"Ethernet\", \"CAN\", \"USB\", \"SPI\", \"I2C\", etc]\n  },\n  \"specifications\": {},\n  \"key_components_needed\": [\n    {\"category\": \"processor/power/driver/interface\", \"description\": \"what's needed\", \"quantity\": 1}\n  ],\n  \"special_requirements\": [\"isolation\", \"EMI shielding\", etc],\n  \"certifications_needed\": [\"RoHS\", \"CE\", \"FCC\", etc],\n  \"environmental\": {\n    \"temperature_range\": \"range\",\n    \"protection_rating\": \"IP rating if needed\"\n  }\n}\n\nRULES:\n1. Be specific and technical\n2. Use standard units (V, A, W, Hz)\n3. Return ONLY JSON, no other text\n4. All fields must be present\n`;\n\nreturn {\n  json: {\n    ...($json),\n    ai_prompt: prompt,\n    task_complexity: 'high',\n    max_tokens: 3000\n  }\n};"
+        "jsCode": "const requirements = $json.requirements;\nconst systemType = $json.system_type;\n\nconst prompt = `You are a senior hardware design engineer with 20+ years of experience designing production ${systemType} systems. You must create a COMPLETE and ACCURATE technical specification.\n\nREQUIREMENTS:\n${requirements}\n\nReturn ONLY valid JSON (no markdown, no explanation, no code fences):\n\n{\n  \"system_type\": \"${systemType}\",\n  \"system_overview\": \"2-3 sentence technical summary covering the complete signal chain, power architecture, and key performance metrics\",\n  \"primary_components\": {\n    \"processor\": {\n      \"type\": \"FPGA/MCU/DSP/SoC\",\n      \"manufacturer\": \"actual manufacturer\",\n      \"specific_part\": \"exact orderable part number e.g. XC7A35T-1CSG324C\",\n      \"required_features\": [\"list specific features\"],\n      \"clock_speed\": \"MHz/GHz\",\n      \"package\": \"BGA/QFP/etc\",\n      \"justification\": \"why this specific part\"\n    },\n    \"power\": {\n      \"input_voltage\": \"DC input voltage\",\n      \"input_type\": \"AC/DC\",\n      \"output_power\": \"total system power in W\",\n      \"efficiency_target\": \"percentage\",\n      \"rails_needed\": [\n        {\"voltage\": \"1.0V\", \"current\": \"2A\", \"purpose\": \"FPGA core\"},\n        {\"voltage\": \"1.8V\", \"current\": \"1A\", \"purpose\": \"FPGA I/O\"},\n        {\"voltage\": \"3.3V\", \"current\": \"2A\", \"purpose\": \"peripherals\"},\n        {\"voltage\": \"28V\", \"current\": \"5A\", \"purpose\": \"GaN PA drain (if RF)\"}\n      ],\n      \"topology\": \"buck-boost/buck/LDO per rail\"\n    },\n    \"rf_section\": {\n      \"frequency_range\": \"start-end GHz\",\n      \"output_power\": \"dBm\",\n      \"gain\": \"total system gain dB\",\n      \"noise_figure\": \"dB\",\n      \"return_loss\": \"dB\",\n      \"amplifier_type\": \"GaN/GaAs/LDMOS/SiGe\",\n      \"pa_stages\": \"number of amplifier stages including driver\"\n    },\n    \"interfaces\": [\"SPI\", \"I2C\", \"JTAG\", \"UART\", \"etc\"]\n  },\n  \"detailed_specifications\": {\n    \"electrical\": {\"input_voltage_range\": \"\", \"power_consumption\": \"\", \"efficiency\": \"\"},\n    \"rf_performance\": {\"frequency\": \"\", \"bandwidth\": \"\", \"output_power\": \"\", \"gain\": \"\", \"p1db\": \"\", \"oip3\": \"\"},\n    \"thermal\": {\"operating_temp\": \"\", \"max_junction_temp\": \"\", \"cooling_method\": \"\", \"thermal_resistance\": \"\"},\n    \"mechanical\": {\"form_factor\": \"\", \"pcb_layers\": \"\", \"dimensions\": \"\"}\n  },\n  \"block_diagram_components\": [\n    {\"id\": \"B1\", \"name\": \"Power Input\", \"type\": \"power_input\", \"specs\": \"12-48V DC input\"},\n    {\"id\": \"B2\", \"name\": \"Buck-Boost 1.0V\", \"type\": \"power_regulator\", \"specs\": \"TPS65263, 1.0V 3A for FPGA core\"},\n    {\"id\": \"B3\", \"name\": \"Buck-Boost 3.3V\", \"type\": \"power_regulator\", \"specs\": \"LMR36015, 3.3V 1.5A for peripherals\"},\n    {\"id\": \"B4\", \"name\": \"FPGA\", \"type\": \"processor\", \"specs\": \"XC7A35T-1CSG324C, 324-BGA\"},\n    {\"id\": \"B5\", \"name\": \"Clock Oscillator\", \"type\": \"oscillator\", \"specs\": \"100MHz TCXO for FPGA\"},\n    {\"id\": \"B6\", \"name\": \"DAC\", \"type\": \"interface\", \"specs\": \"AD9744 14-bit DAC for RF baseband\"},\n    {\"id\": \"B7\", \"name\": \"Upconverter/Mixer\", \"type\": \"rf_component\", \"specs\": \"ADL5801 wideband mixer\"},\n    {\"id\": \"B8\", \"name\": \"Bandpass Filter\", \"type\": \"rf_component\", \"specs\": \"ceramic/SAW filter\"},\n    {\"id\": \"B9\", \"name\": \"Driver Amplifier\", \"type\": \"amplifier\", \"specs\": \"HMC580 driver amp, 15dB gain\"},\n    {\"id\": \"B10\", \"name\": \"GaN Power Amplifier\", \"type\": \"amplifier\", \"specs\": \"TGF2965 GaN PA, 40dBm output\"},\n    {\"id\": \"B11\", \"name\": \"Directional Coupler\", \"type\": \"rf_component\", \"specs\": \"20dB coupler for VSWR monitoring\"},\n    {\"id\": \"B12\", \"name\": \"Antenna Port\", \"type\": \"connector\", \"specs\": \"SMA connector, 50 ohm\"}\n  ],\n  \"signal_flow\": [\n    {\"from\": \"B1\", \"to\": \"B2\", \"signal\": \"DC power\", \"specs\": \"input to 1.0V rail\"},\n    {\"from\": \"B1\", \"to\": \"B3\", \"signal\": \"DC power\", \"specs\": \"input to 3.3V rail\"},\n    {\"from\": \"B5\", \"to\": \"B4\", \"signal\": \"clock\", \"specs\": \"100MHz reference\"},\n    {\"from\": \"B4\", \"to\": \"B6\", \"signal\": \"digital baseband\", \"specs\": \"parallel data bus\"},\n    {\"from\": \"B6\", \"to\": \"B7\", \"signal\": \"analog IF\", \"specs\": \"intermediate frequency\"},\n    {\"from\": \"B7\", \"to\": \"B8\", \"signal\": \"RF\", \"specs\": \"5-18GHz\"},\n    {\"from\": \"B8\", \"to\": \"B9\", \"signal\": \"RF\", \"specs\": \"filtered signal\"},\n    {\"from\": \"B9\", \"to\": \"B10\", \"signal\": \"RF\", \"specs\": \"driven signal\"},\n    {\"from\": \"B10\", \"to\": \"B11\", \"signal\": \"RF\", \"specs\": \"40dBm output\"},\n    {\"from\": \"B11\", \"to\": \"B12\", \"signal\": \"RF\", \"specs\": \"to antenna\"}\n  ],\n  \"key_components_needed\": [\n    {\"category\": \"processor\", \"part_number\": \"exact_part\", \"manufacturer\": \"vendor\", \"quantity\": 1, \"critical\": true},\n    {\"category\": \"power_regulator\", \"part_number\": \"exact_part\", \"manufacturer\": \"vendor\", \"quantity\": 1, \"critical\": true},\n    {\"category\": \"amplifier\", \"part_number\": \"exact_part\", \"manufacturer\": \"vendor\", \"quantity\": 1, \"critical\": true}\n  ],\n  \"design_challenges\": [\"challenge 1\", \"challenge 2\", \"challenge 3\"],\n  \"recommended_standards\": [\"relevant standards\"]\n}\n\nCRITICAL RULES:\n1. Use REAL orderable part numbers from manufacturers (TI, Analog Devices, Xilinx/AMD, Qorvo, Skyworks, NXP)\n2. block_diagram_components MUST include ALL of these subsystems:\n   - Power input and ALL power regulators (one per voltage rail)\n   - Clock/oscillator for FPGA/MCU\n   - The main processor (FPGA/MCU)\n   - For RF: DAC, mixer/upconverter, filters, driver amp, power amp, directional coupler, antenna\n   - For motor control: gate drivers, current sensors, H-bridge/inverter\n   - For digital: USB/Ethernet/CAN transceivers, level shifters\n3. MINIMUM 8 blocks in block_diagram_components, MINIMUM 8 entries in signal_flow\n4. key_components_needed must have MINIMUM 6 entries with real part numbers\n5. Calculate realistic power rails: FPGA needs 1.0V core + 1.8V aux + 3.3V I/O. GaN PA needs 28-50V drain\n6. Include a driver amplifier BEFORE any power amplifier (PA needs driven input)\n7. Be specific with numbers - no placeholders or TBD values\n8. The example block_diagram above is just a template - adapt it to match the ACTUAL requirements\n9. Return ONLY the JSON object, no markdown, no explanation`;\n\nreturn { json: { ...($json), ai_prompt: prompt } };"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345604",
+      "id": "cbb38bd7-abe7-4b7e-9cf2-79ffc4a10c13",
       "name": "Build AI Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        840,
-        300
+        2608,
+        1872
       ]
     },
     {
@@ -67,92 +78,172 @@
         "text": "={{ $json.ai_prompt }}",
         "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345605",
+      "id": "68b5ed47-8d57-4087-bb7a-72119bd338c9",
       "name": "AI: Parse Requirements",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        1040,
-        300
+        2800,
+        1872
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// EXTRACT PARSED REQUIREMENTS FROM AI\n// ==========================================\n\nconst aiResponse = $input.item.json;\nlet parsedRequirements;\n\ntry {\n  // Extract text from AI Agent response\n  let content = '';\n  \n  // AI Agent returns 'output' field\n  if (aiResponse.output) {\n    content = aiResponse.output;\n  } else if (aiResponse.choices && aiResponse.choices[0]) {\n    content = aiResponse.choices[0].message?.content || '';\n  } else if (aiResponse.text) {\n    content = aiResponse.text;\n  } else if (typeof aiResponse === 'string') {\n    content = aiResponse;\n  }\n  \n  // If response is already an object\n  if (typeof content === 'object') {\n    parsedRequirements = content;\n  } else {\n    // Extract JSON from text response\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsedRequirements = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found in AI response');\n    }\n  }\n  \n  console.log('[AI] Parsed system type:', parsedRequirements.system_type);\n  \n} catch (error) {\n  console.error('[AI] Parse error:', error);\n  // Return default structure on error\n  const validationData = $('Validate Input & Detect Type').item?.json || {};\n  parsedRequirements = {\n    system_type: validationData.system_type || 'Digital_Controller',\n    primary_components: {\n      processor: { type: 'MCU', specific_part: 'STM32F4', required_features: ['GPIO', 'ADC', 'PWM'], package: 'LQFP' },\n      power: { input_voltage: '12V', output_power: '10W', rails_needed: ['3.3V', '5V'] },\n      interfaces: ['CAN', 'SPI', 'I2C']\n    },\n    specifications: {},\n    key_components_needed: [{ category: 'processor', description: 'Main MCU', quantity: 1 }],\n    special_requirements: [],\n    certifications_needed: ['RoHS'],\n    environmental: { temperature_range: '-40 to 85C', protection_rating: 'IP20' }\n  };\n}\n\nconst validationData = $('Validate Input & Detect Type').item?.json || {};\n\nreturn {\n  json: {\n    parsed_requirements: parsedRequirements,\n    original_requirements: validationData.requirements || '',\n    project_name: validationData.project_name || 'Hardware_Project_' + Date.now(),\n    system_type: parsedRequirements.system_type || validationData.system_type || 'Digital_Controller',\n    timestamp: validationData.timestamp || Date.now()\n  }\n};"
+        "jsCode": "const aiResponse = $input.item.json;\nlet parsedRequirements;\n\ntry {\n  let content = aiResponse.output || aiResponse.text || '';\n  if (typeof content === 'object') {\n    parsedRequirements = content;\n  } else {\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsedRequirements = JSON.parse(jsonMatch[0]);\n    } else {\n      throw new Error('No JSON found');\n    }\n  }\n} catch (error) {\n  const validationData = $('Validate Input & Detect Type').item?.json || {};\n  parsedRequirements = {\n    system_type: validationData.system_type || 'Digital_Controller',\n    primary_components: {\n      processor: { type: 'MCU', specific_part: 'STM32F4', required_features: ['GPIO', 'ADC'], package: 'LQFP' },\n      power: { input_voltage: '12V', output_power: '10W', rails_needed: ['3.3V', '5V'] },\n      interfaces: ['CAN', 'SPI', 'I2C']\n    }\n  };\n}\n\nconst validationData = $('Validate Input & Detect Type').item?.json || {};\n\nreturn {\n  json: {\n    parsed_requirements: parsedRequirements,\n    original_requirements: validationData.requirements || '',\n    project_name: validationData.project_name || 'Hardware_Project_' + Date.now(),\n    system_type: parsedRequirements.system_type || validationData.system_type,\n    session_id: validationData.session_id || 'session_' + Date.now()\n  }\n};"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345606",
+      "id": "2cdf197e-93a4-4677-9b33-7f0a72bd3f5d",
       "name": "Extract Parsed Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1240,
-        300
+        3008,
+        1872
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// GENERATE UNIVERSAL BLOCK DIAGRAM\n// ==========================================\n\nconst parsed = $json.parsed_requirements || {};\nconst projectName = $json.project_name || 'Hardware_Project';\nconst systemType = $json.system_type || 'Digital_Controller';\n\nconst diagram = {\n  version: '1.0',\n  type: 'hardware_block_diagram',\n  metadata: {\n    project: projectName,\n    system_type: systemType,\n    created: new Date().toISOString()\n  },\n  blocks: [],\n  connections: []\n};\n\nlet blockId = 1;\nconst blockMap = {};\n\n// PROCESSOR BLOCK\nconst proc = parsed.primary_components?.processor || { type: 'MCU' };\nconst procBlock = {\n  id: `B${blockId}`,\n  type: 'processor',\n  label: proc.specific_part || proc.type || 'Processor',\n  position: {x: 500, y: 300}\n};\nblockMap.processor = procBlock.id;\ndiagram.blocks.push(procBlock);\nblockId++;\n\n// POWER BLOCKS\nconst power = parsed.primary_components?.power || { input_voltage: '12V', rails_needed: ['3.3V'] };\nconst inputBlock = {\n  id: `B${blockId}`,\n  type: 'power_input',\n  label: `Input ${power.input_voltage || '12V'}`,\n  position: {x: 100, y: 100}\n};\nblockMap.input_power = inputBlock.id;\ndiagram.blocks.push(inputBlock);\nblockId++;\n\n// Voltage regulators\nconst rails = power.rails_needed || ['3.3V'];\nrails.forEach((rail, i) => {\n  const railBlock = {\n    id: `B${blockId}`,\n    type: 'power_regulator',\n    label: `Regulator ${rail}`,\n    position: {x: 100, y: 200 + i*80}\n  };\n  diagram.blocks.push(railBlock);\n  diagram.connections.push({ from: blockMap.input_power, to: railBlock.id, label: power.input_voltage });\n  diagram.connections.push({ from: railBlock.id, to: blockMap.processor, label: rail });\n  blockId++;\n});\n\n// INTERFACE BLOCKS\nconst interfaces = parsed.primary_components?.interfaces || ['SPI', 'I2C'];\ninterfaces.forEach((iface, i) => {\n  const ifaceBlock = {\n    id: `B${blockId}`,\n    type: 'interface',\n    label: iface,\n    position: {x: 800, y: 150 + i*80}\n  };\n  diagram.blocks.push(ifaceBlock);\n  diagram.connections.push({ from: blockMap.processor, to: ifaceBlock.id, label: iface });\n  blockId++;\n});\n\n// Generate ASCII diagram with safe string operations\nconst safeName = (projectName || 'Project').substring(0, 20).padEnd(20);\nconst safeType = (systemType || 'Unknown').padEnd(23);\n\nconst asciiDiagram = `\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551  BLOCK DIAGRAM: ${safeName}  \u2551\n\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563\n\u2551  System Type: ${safeType}\u2551\n\u2551  Total Blocks: ${diagram.blocks.length.toString().padEnd(22)}\u2551\n\u2551  Connections: ${diagram.connections.length.toString().padEnd(23)}\u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n\nMAIN COMPONENTS:\n${diagram.blocks.map((b, i) => `  ${i+1}. ${b.label} (${b.type})`).join('\\n')}\n\nCONNECTIONS:\n${diagram.connections.slice(0, 8).map((c, i) => `  ${i+1}. ${diagram.blocks.find(b=>b.id===c.from)?.label} \u2192 ${diagram.blocks.find(b=>b.id===c.to)?.label}`).join('\\n')}\n`;\n\nreturn {\n  json: {\n    ...($json),\n    block_diagram: diagram,\n    ascii_diagram: asciiDiagram,\n    awaiting_approval: true\n  }\n};"
+        "jsCode": "const parsed = $json.parsed_requirements || {};\nconst projectName = $json.project_name || 'Hardware_Project';\nconst systemType = $json.system_type || 'Digital_Controller';\nconst startId = Date.now().toString().slice(-4);\nlet bid = parseInt(startId);\n\n// Create base diagram structure\nconst diagram = { \n  version:'1.0', \n  type:'hardware_block_diagram', \n  metadata:{project:projectName,system_type:systemType,overview:parsed.system_overview||''}, \n  blocks:[], \n  connections:[] \n};\n\n// Use parsed blocks if available\nif (parsed.block_diagram_components && parsed.block_diagram_components.length > 0) {\n  diagram.blocks = parsed.block_diagram_components;\n  if (parsed.signal_flow) diagram.connections = parsed.signal_flow;\n} else {\n  // Fallback: Generate basic blocks based on type\n  const primary = parsed.primary_components || {};\n  const proc = primary.processor || {type:'MCU'};\n  \n  diagram.blocks.push({id:\"B\" + bid, type:'processor',name:proc.specific_part||proc.type,specs:proc.manufacturer||''});\n  const pid = \"B\" + bid; bid++;\n  \n  const power = primary.power || {};\n  diagram.blocks.push({id:\"B\" + bid,type:'power_input',name:'Power Input',specs:power.input_voltage||'12V'});\n  const pwid = \"B\" + bid; bid++;\n  \n  if (power.rails_needed) {\n    (power.rails_needed||[]).forEach(r => {\n      const v = typeof r==='object'?r.voltage:r;\n      const specs = typeof r==='object' ? (r.current + \" for \" + r.purpose) : v;\n      diagram.blocks.push({id:\"B\" + bid,type:'regulator',name:\"DC-DC \" + v, specs:specs});\n      diagram.connections.push({from:pwid,to:\"B\" + bid,signal:'DC'});\n      diagram.connections.push({from:\"B\" + bid,to:pid,signal:v});\n      bid++;\n    });\n  }\n}\n\n// --- MERMAID GENERATION ---\nconst blocksStr = diagram.blocks.map(b => {\n  const label = (b.name||b.type).replace(/[\"\\\\]/g, '');\n  const details = (b.specs||b.type).replace(/[\"\\\\]/g, '');\n  return '    ' + b.id + '[\"' + label + '<br/>' + details + '\"]';\n}).join('\\n');\n\nconst connStr = diagram.connections.map(c => {\n  const label = (c.signal||c.specs||'').replace(/[\"\\\\]/g, '');\n  return '    ' + c.from + ' -->|' + label + '| ' + c.to;\n}).join('\\n');\n\nconst mermaidCode = \"graph TD\\n\" + blocksStr + \"\\n\\n\" + connStr + \"\\n\\nclassDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;\";\n\n// --- HTML GENERATION ---\nconst htmlContent = '<!DOCTYPE html><html><head><title>' + projectName + '</title><script type=\"module\">import mermaid from \"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs\";mermaid.initialize({ startOnLoad: true });</scr' + 'ipt><style>body{font-family:sans-serif;padding:20px;}.mermaid{margin:20px 0;padding:20px;border:1px solid #ddd;border-radius:5px;}</style></head><body><h1>' + projectName + ' - Block Diagram</h1><div class=\"mermaid\">' + mermaidCode + '</div><hr/><pre>' + mermaidCode + '</pre></body></html>';\n\n// --- FILE SAVING ---\nlet savePath = '';\ntry {\n  const fs = require('fs');\n  const path = require('path');\n  const outputDir = '/mnt/data/outputs';\n  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, {recursive:true});\n  const filename = projectName.replace(/[^a-z0-9]/gi, '_') + '_diagram.html';\n  savePath = path.join(outputDir, filename);\n  fs.writeFileSync(savePath, htmlContent);\n} catch(e) { \n  savePath = 'Error saving: ' + e.message; \n}\n\n// --- ASCII GENERATION ---\nconst asciiTitle = \"\\n+==============================================================================+\\n|  HARDWARE BLOCK DIAGRAM                                                       |\\n+==============================================================================+\\n|  Project: \" + projectName.substring(0,30).padEnd(30) + \"                           |\\n|  Type: \" + systemType.padEnd(35) + \"                           |\\n+==============================================================================+\\n\\n\";\n\nconst asciiOverview = \"SYSTEM OVERVIEW:\\n\" + (parsed.system_overview || systemType + ' System') + \"\\n\\n\";\n\nconst asciiBlocks = \"BLOCK DIAGRAM COMPONENTS:\\n\" + diagram.blocks.map((b,i) => {\n  return \"  [\" + (b.id||i+1) + \"] \" + (b.name||'Component').padEnd(25) + \" | \" + (b.type).padEnd(15) + \" | \" + (b.specs||'');\n}).join('\\n') + \"\\n\\n\";\n\nconst asciiSignals = \"SIGNAL FLOW:\\n\" + diagram.connections.slice(0,13).map((c,i) => {\n  return \"  \" + c.from + \" --> \" + c.to + \" (\" + (c.signal||c.specs||'data') + \")\";\n}).join('\\n') + \"\\n\\n\";\n\nconst asciiMermaid = \"MERMAID CODE (Copy to Mermaid Live Editor):\\n\\n\" + mermaidCode + \"\\n\\n\";\n\nconst asciiFooter = \"HTML Preview saved to: \" + savePath;\n\nconst asciiDiagram = asciiTitle + asciiOverview + asciiBlocks + asciiSignals + asciiMermaid + asciiFooter;\n\n\nfunction esc(s) { return s == null ? '' : String(s).split(\"'\").join(\"''\"); }\n\nlet q = 'INSERT INTO pending_approvals (session_id, project_name, system_type, block_diagram, parsed_requirements, ascii_diagram, original_requirements) VALUES (';\nq += \"'\" + esc($json.session_id) + \"',\";\nq += \"'\" + esc(projectName) + \"',\";\nq += \"'\" + esc(systemType) + \"',\";\nq += \"'\" + esc(JSON.stringify(diagram)) + \"',\";\nq += \"'\" + esc(JSON.stringify(parsed)) + \"',\";\nq += \"'\" + esc(asciiDiagram) + \"',\";\nq += \"'\" + esc($json.original_requirements||'') + \"')\";\nq += ' ON CONFLICT (session_id) DO UPDATE SET block_diagram=EXCLUDED.block_diagram, parsed_requirements=EXCLUDED.parsed_requirements, ascii_diagram=EXCLUDED.ascii_diagram, created_at=NOW()';\n\nconst saveQuery = q;\n\nreturn { json: { ...($json), block_diagram:diagram, ascii_diagram:asciiDiagram, save_query:saveQuery, mermaid_code:mermaidCode, html_path:savePath } };"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345607",
+      "id": "bcbeedf0-cac9-4de6-b558-1ffce211f49e",
       "name": "Generate Block Diagram",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1440,
-        300
+        3200,
+        1872
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Show diagram and request approval\nconst diagram = $json.ascii_diagram;\nconst projectName = $json.project_name;\n\nreturn {\n  json: {\n    output: `\ud83d\udccb **BLOCK DIAGRAM GENERATED**\\n\\n${diagram}\\n\\n\u2705 **Please review the block diagram above.**\\n\\n**Options:**\\n- Type **\"APPROVE\"** to continue to component selection\\n- Type **\"REJECT: <reason>\"** to request changes\\n\\nWaiting for your approval...`,\n    ...($json)\n  }\n};"
+        "operation": "executeQuery",
+        "query": "={{ $json.save_query }}",
+        "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345608",
-      "name": "Show Diagram & Wait Approval",
+      "id": "4a708426-afdf-43a8-a2d5-877fa23bd191",
+      "name": "Save Pending Approval to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3408,
+        1872
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "uIP5sdZoe7UXLmnx",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const diagramData = $('Generate Block Diagram').item.json;\nconst diagram = diagramData.ascii_diagram;\n\nreturn {\n  json: {\n    output: `BLOCK DIAGRAM GENERATED\\n\\n${diagram}\\n\\nPlease review the block diagram above.\\n\\nOptions:\\n- Type APPROVE to continue to component selection\\n- Type REJECT to request changes\\n\\nWaiting for your approval...`\n  }\n};"
+      },
+      "id": "798d749e-5f4e-4f12-83ba-d04dfa8fcb0b",
+      "name": "Return Diagram Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1640,
-        300
+        3600,
+        1872
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// HANDLE APPROVAL RESPONSE\n// ==========================================\n\nconst approvalMsg = $json.approval_action || '';\n\nif (approvalMsg !== 'approve') {\n  throw new Error('\u274c Workflow stopped. User did not approve block diagram.\\n\\nPlease start over with updated requirements.');\n}\n\nconsole.log('[APPROVAL] Block diagram approved. Continuing to component search...');\n\nreturn {\n  json: {\n    approved: true,\n    block_diagram: $('Generate Block Diagram').item.json.block_diagram,\n    parsed_requirements: $('Extract Parsed Data').item.json.parsed_requirements,\n    project_name: $('Extract Parsed Data').item.json.project_name,\n    system_type: $('Extract Parsed Data').item.json.system_type\n  }\n};"
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pending_approvals WHERE approved = false ORDER BY created_at DESC LIMIT 1;",
+        "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345609",
+      "id": "d293a390-844e-4b44-850c-b3e548589038",
+      "name": "Get Pending Approval from DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2608,
+        2064
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "uIP5sdZoe7UXLmnx",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const approvalInput = $('Validate Input & Detect Type').item.json;\nconst approvalMsg = approvalInput.approval_action || '';\nconst dbResult = $('Get Pending Approval from DB').item.json;\n\n// Handle REJECT - return message asking for new requirements\nif (approvalMsg === 'reject' || approvalMsg === 'modify') {\n  return {\n    json: {\n      approved: false,\n      is_rejection: true,\n      output: 'Block diagram rejected. Please provide your updated requirements below and I will generate a new design.\\n\\nTip: Be specific about:\\n- Exact part numbers (e.g., Xilinx Artix-7 XC7A35T)\\n- Power specifications (input voltage, output power, efficiency)\\n- Frequency ranges and signal levels\\n- Interface requirements\\n- Environmental conditions'\n    }\n  };\n}\n\nif (approvalMsg !== 'approve') {\n  return {\n    json: {\n      approved: false,\n      output: 'Please type APPROVE to continue or REJECT to start over with new requirements.'\n    }\n  };\n}\n\nif (!dbResult || !dbResult.block_diagram) {\n  return {\n    json: {\n      approved: false,\n      output: 'No pending design found. Please submit your hardware requirements first.'\n    }\n  };\n}\n\nlet blockDiagram, parsedRequirements;\ntry {\n  blockDiagram = typeof dbResult.block_diagram === 'string' ? JSON.parse(dbResult.block_diagram) : dbResult.block_diagram;\n  parsedRequirements = typeof dbResult.parsed_requirements === 'string' ? JSON.parse(dbResult.parsed_requirements) : dbResult.parsed_requirements;\n} catch (e) {\n  blockDiagram = dbResult.block_diagram;\n  parsedRequirements = dbResult.parsed_requirements;\n}\n\nreturn {\n  json: {\n    approved: true,\n    block_diagram: blockDiagram,\n    parsed_requirements: parsedRequirements,\n    project_name: dbResult.project_name,\n    system_type: dbResult.system_type,\n    session_id: dbResult.session_id\n  }\n};"
+      },
+      "id": "7c799bf0-ef49-4fe3-a622-6dc284f874fa",
       "name": "Handle Approval",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        840,
-        500
+        2800,
+        2064
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// BUILD COMPONENT SEARCH QUERIES\n// ==========================================\n\nconst parsed = $json.parsed_requirements;\nconst systemType = $json.system_type;\nconst searches = [];\n\n// Processor search\nif (parsed.primary_components?.processor) {\n  const proc = parsed.primary_components.processor;\n  searches.push({\n    category: 'processor',\n    search_term: proc.specific_part || proc.type || 'MCU',\n    priority: 1\n  });\n}\n\n// Power regulators\nif (parsed.primary_components?.power) {\n  const rails = parsed.primary_components.power.rails_needed || ['3.3V'];\n  rails.forEach(rail => {\n    searches.push({\n      category: 'power_regulator',\n      search_term: `DC-DC converter ${rail}`,\n      priority: 2\n    });\n  });\n}\n\n// Interface ICs\nif (parsed.primary_components?.interfaces) {\n  parsed.primary_components.interfaces.forEach(iface => {\n    searches.push({\n      category: 'interface',\n      search_term: `${iface} transceiver IC`,\n      priority: 3\n    });\n  });\n}\n\nconsole.log(`[SEARCH] Generated ${searches.length} component searches`);\n\n// Safety check: If no searches generated, add default searches\nif (searches.length === 0) {\n  console.warn('[SEARCH] No components found in requirements. Adding default searches.');\n  searches.push(\n    { category: 'processor', search_term: 'STM32F4 MCU', priority: 1 },\n    { category: 'power_regulator', search_term: 'DC-DC converter 3.3V', priority: 2 }\n  );\n}\n\n// Return array for split in batches\nreturn searches.map(s => ({\n  json: {\n    ...s,\n    project_name: $json.project_name,\n    system_type: systemType\n  }\n}));"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345610",
+      "id": "0beb2116-4afb-4a30-9cc7-1b08514ca2d9",
+      "name": "Is Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3008,
+        2064
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_approvals SET approved = true, approved_at = NOW() WHERE session_id = '{{ $json.session_id }}' RETURNING *;",
+        "options": {}
+      },
+      "id": "fbe736dd-4953-4d81-9621-b2e402058021",
+      "name": "Mark Approval in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3200,
+        2064
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "uIP5sdZoe7UXLmnx",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const approvalData = $('Handle Approval').item.json;\nconst parsed = approvalData.parsed_requirements || {};\nconst systemType = approvalData.system_type;\nconst projectName = approvalData.project_name;\nconst searches = [];\nconst addedSearches = new Set();\n\n// Helper to avoid duplicate searches\nfunction addSearch(category, searchTerm, priority) {\n  const key = `${category}:${searchTerm}`;\n  if (!addedSearches.has(key)) {\n    addedSearches.add(key);\n    searches.push({ category, search_term: searchTerm, priority });\n  }\n}\n\n// 1. Use key_components_needed from AI output (most specific)\nif (parsed.key_components_needed && Array.isArray(parsed.key_components_needed)) {\n  parsed.key_components_needed.forEach((comp, i) => {\n    const cat = (comp.category || 'component').toLowerCase().replace(/\\s+/g, '_');\n    const term = comp.part_number || comp.description || comp.category;\n    if (term) addSearch(cat, term, i + 1);\n  });\n}\n\n// 2. Use block_diagram_components (covers all blocks in the design)\nif (parsed.block_diagram_components && Array.isArray(parsed.block_diagram_components)) {\n  parsed.block_diagram_components.forEach((block, i) => {\n    const cat = (block.type || 'component').toLowerCase().replace(/\\s+/g, '_');\n    const term = block.specs || block.name || block.type;\n    if (term && term.length > 2) addSearch(cat, term, i + 10);\n  });\n}\n\n// 3. Processor\nif (parsed.primary_components?.processor) {\n  const proc = parsed.primary_components.processor;\n  addSearch('processor', proc.specific_part || proc.type || 'MCU', 1);\n}\n\n// 4. Power rails\nif (parsed.primary_components?.power) {\n  const power = parsed.primary_components.power;\n  const topology = power.topology || 'DC-DC';\n  const rails = power.rails_needed || [];\n  rails.forEach((rail, i) => {\n    const voltage = typeof rail === 'object' ? rail.voltage : rail;\n    addSearch('power_regulator', `${topology} converter ${voltage}`, 20 + i);\n  });\n}\n\n// 5. RF section (critical for RF designs)\nif (parsed.primary_components?.rf_section) {\n  const rf = parsed.primary_components.rf_section;\n  if (rf.amplifier_type) addSearch('amplifier', `${rf.amplifier_type} power amplifier ${rf.frequency_range || ''}`, 5);\n  if (rf.frequency_range) {\n    addSearch('rf_component', `LNA ${rf.frequency_range}`, 6);\n    addSearch('rf_component', `mixer ${rf.frequency_range}`, 7);\n    addSearch('rf_component', `RF filter ${rf.frequency_range}`, 8);\n  }\n}\n\n// 6. Interfaces\nif (parsed.primary_components?.interfaces) {\n  parsed.primary_components.interfaces.slice(0, 3).forEach((iface, i) => {\n    addSearch('interface', `${iface} transceiver IC`, 30 + i);\n  });\n}\n\n// Fallback if nothing found\nif (searches.length === 0) {\n  addSearch('processor', 'STM32F4 MCU', 1);\n  addSearch('power_regulator', 'DC-DC converter 3.3V', 2);\n}\n\n// Sort by priority and limit to 10 searches\nsearches.sort((a, b) => a.priority - b.priority);\nconst limitedSearches = searches.slice(0, 10);\n\nreturn limitedSearches.map(s => ({ json: { ...s, project_name: projectName, system_type: systemType } }));"
+      },
+      "id": "6d097eef-7018-4f08-9159-4f4e63b950c2",
       "name": "Build Component Searches",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1040,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "batchSize": 3,
-        "options": {}
-      },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345611",
-      "name": "Split Searches (3 per batch)",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [
-        1240,
-        500
+        3408,
+        2064
       ]
     },
     {
@@ -161,18 +252,18 @@
         "url": "http://component_api:8001/api/search",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true, sources: [\"digikey\", \"mouser\"], limit_per_source: 10 }) }}",
+        "jsonBody": "={{ JSON.stringify({ search_term: $json.search_term, category: $json.category, use_cache: true, sources: ['digikey', 'mouser'], limit_per_source: 10 }) }}",
         "options": {
           "timeout": 60000
         }
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345612",
-      "name": "Search Components (Real)",
+      "id": "d6eeb1e3-6852-4117-a96c-fdaa655de29f",
+      "name": "Search Components (API)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1440,
-        500
+        3808,
+        2064
       ],
       "retryOnFail": true,
       "maxTries": 3,
@@ -183,26 +274,26 @@
         "aggregate": "aggregateAllItemData",
         "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345613",
+      "id": "32fe6c8d-85bc-42dd-b17f-adcd19b418b7",
       "name": "Aggregate All Components",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
       "position": [
-        1640,
-        500
+        4000,
+        2064
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// PREPARE COMPONENT RECOMMENDATIONS\n// ==========================================\n\nconst allResults = $input.all();\nconst allComponents = [];\n\nallResults.forEach(result => {\n  if (result.json.components) {\n    allComponents.push(...result.json.components);\n  }\n});\n\n// Build recommendation prompt\nconst prompt = `Analyze these component options and recommend the best choice for each category.\n\nComponents found: ${allComponents.length}\n\n${allComponents.slice(0, 15).map((c, i) => `${i+1}. ${c.part_number} - ${c.description} - ${c.price || 'N/A'}`).join('\\n')}\n\nFor each category, recommend ONE component with brief rationale (1 sentence).\n\nReturn JSON:\n{\n  \"recommendations\": [\n    {\n      \"category\": \"processor\",\n      \"part_number\": \"XXX\",\n      \"rationale\": \"Best balance of features and price\"\n    }\n  ]\n}`;\n\nreturn {\n  json: {\n    all_components: allComponents,\n    component_count: allComponents.length,\n    ai_prompt: prompt,\n    max_tokens: 2000\n  }\n};"
+        "jsCode": "const allResults = $input.all();\nconst allComponents = [];\n\n// Handle both direct items and aggregated data structure\nallResults.forEach(result => {\n  const json = result.json;\n  // Direct components array\n  if (json.components && Array.isArray(json.components)) {\n    allComponents.push(...json.components);\n  }\n  // Aggregated data array from Aggregate node\n  if (json.data && Array.isArray(json.data)) {\n    json.data.forEach(item => {\n      if (item.components && Array.isArray(item.components)) {\n        allComponents.push(...item.components);\n      }\n    });\n  }\n  // Nested json structure\n  if (json.json && json.json.components && Array.isArray(json.json.components)) {\n    allComponents.push(...json.json.components);\n  }\n});\n\nconst prompt = `You are a senior hardware engineer. Analyze these components and recommend the best option for each category based on availability, price, and technical fit.\n\nComponents found: ${allComponents.length}\n\n${allComponents.slice(0, 20).map((c, i) => `${i+1}. [${c.category}] ${c.part_number} by ${c.manufacturer} - ${c.description} - Price: ${c.pricing?.unit_price || 'N/A'} - Source: ${c.source}`).join('\\n')}\n\nFor each category, recommend the best component and explain why. Return JSON with your recommendations.`;\n\nreturn {\n  json: {\n    all_components: allComponents,\n    component_count: allComponents.length,\n    ai_prompt: prompt\n  }\n};"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345614",
+      "id": "9242c55c-2242-4d2f-ad61-429416aa72f8",
       "name": "Prepare Component Recommendations",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1840,
-        500
+        4208,
+        2064
       ]
     },
     {
@@ -211,86 +302,87 @@
         "text": "={{ $json.ai_prompt }}",
         "options": {}
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345615",
+      "id": "9b736b6b-027f-41d3-a4d5-0864cd90e4dd",
       "name": "AI: Recommend Components",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        2040,
-        500
+        4400,
+        2064
       ]
     },
     {
       "parameters": {
-        "jsCode": "// ==========================================\n// GENERATE BOM\n// ==========================================\n\nconst components = $('Prepare Component Recommendations').item.json.all_components || [];\nconst projectName = $('Handle Approval').item.json.project_name || 'Hardware_Project';\n\n// Safety check for components\nif (!Array.isArray(components) || components.length === 0) {\n  console.warn('[BOM] WARNING: No components found! Received:', components);\n  throw new Error('\u274c No components found for BOM generation.\\n\\nThis means the component search returned 0 results.\\n\\nPossible causes:\\n1. Playwright service not running (docker compose up -d)\\n2. Playwright API returning empty results\\n3. Network/firewall blocking DigiKey/Mouser\\n\\nRun diagnostic: ./diagnose_component_search.sh');\n}\n\nconsole.log(`[BOM] Generating BOM with ${components.length} components`);\n\n// Calculate total cost\nlet totalCost = 0;\ncomponents.forEach(comp => {\n  const priceMatch = (comp.price || comp.pricing?.unit_price || '$0').toString().match(/\\$?([0-9.]+)/);\n  if (priceMatch) {\n    totalCost += parseFloat(priceMatch[1]);\n  }\n});\n\n// Generate BOM summary\nconst bomSummary = `\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551         BILL OF MATERIALS            \u2551\n\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563\n\u2551  Project: ${projectName.substring(0, 24).padEnd(24)}\u2551\n\u2551  Total Components: ${components.length.toString().padEnd(17)}\u2551\n\u2551  Estimated Cost: $${totalCost.toFixed(2).padEnd(15)}\u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n\nTOP COMPONENTS:\n${components.slice(0, 10).map((c, i) => \n  `${i+1}. ${(c.part_number || 'Unknown').padEnd(20)} ${(c.price || c.pricing?.unit_price || '$0.00').toString().padStart(10)}`\n).join('\\n')}\n${components.length > 10 ? `\\n... and ${components.length - 10} more components` : ''}\n`;\n\nreturn {\n  json: {\n    project_name: projectName,\n    bom_summary: bomSummary,\n    total_components: components.length,\n    total_cost: totalCost,\n    components: components,\n    phase_1_complete: true\n  }\n};"
+        "jsCode": "const components = $('Prepare Component Recommendations').item.json.all_components || [];\nconst projectName = $('Handle Approval').item.json.project_name || 'Hardware_Project';\n\nlet totalCost = 0;\ncomponents.forEach(comp => {\n  // Handle pricing in different formats: {pricing: {unit_price: '$12.50'}}, {price: '$12.50'}, etc.\n  const priceStr = comp.pricing?.unit_price || comp.price || '$0';\n  const priceMatch = priceStr.toString().match(/[^0-9]*([0-9][0-9,.]*[0-9])/);\n  if (priceMatch) totalCost += parseFloat(priceMatch[1].replace(/,/g, ''));\n});\n\n// Group components by category\nconst byCategory = {};\ncomponents.forEach(c => {\n  const cat = c.category || 'other';\n  if (!byCategory[cat]) byCategory[cat] = [];\n  byCategory[cat].push(c);\n});\n\nconst bomSummary = `\n+======================================+\n|         BILL OF MATERIALS            |\n+======================================+\n|  Project: ${projectName.substring(0, 24).padEnd(24)}|\n|  Total Components: ${components.length.toString().padEnd(17)}|\n|  Estimated Cost: $${totalCost.toFixed(2).padEnd(15)}|\n+======================================+\n\nCOMPONENTS BY CATEGORY:\n${Object.entries(byCategory).map(([cat, comps]) => {\n  return `\\n  [${cat.toUpperCase()}]\\n` + comps.map((c, i) => {\n    const price = c.pricing?.unit_price || c.price || 'N/A';\n    return `    ${i+1}. ${(c.part_number || 'Unknown').padEnd(25)} | ${(c.manufacturer || '').padEnd(20)} | ${price.toString().padStart(8)} | ${c.source || ''}`;\n  }).join('\\n');\n}).join('\\n')}\n`;\n\nreturn {\n  json: {\n    project_name: projectName,\n    bom_summary: bomSummary,\n    total_components: components.length,\n    total_cost: totalCost,\n    components: components,\n    phase_1_complete: true\n  }\n};"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345616",
+      "id": "0ec05d59-adf8-44c4-9bd5-1fb94e2c9624",
       "name": "Generate BOM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2240,
-        500
+        4608,
+        2064
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Show BOM and complete\nconst bomSummary = $json.bom_summary;\n\nreturn {\n  json: {\n    output: `\u2705 **PHASE 1 COMPLETE**\\n\\n${bomSummary}\\n\\n\ud83d\udce6 **Next Steps:**\\n- Phase 2: Generate HRS Document (50-70 pages)\\n- Phase 3: Compliance validation\\n- Phase 4: Netlist generation\\n\\nWould you like to continue to Phase 2?`,\n    ...($json)\n  }\n};"
+        "jsCode": "const bomSummary = $json.bom_summary;\n\nreturn {\n  json: {\n    output: `PHASE 1 COMPLETE\\n\\n${bomSummary}\\n\\nNext Steps:\\n- Phase 2: Generate HRS Document\\n- Phase 3: Compliance validation\\n- Phase 4: Netlist generation\\n\\nWould you like to continue to Phase 2?`,\n    ...($json)\n  }\n};"
       },
-      "id": "b8c5e5d9-1234-5678-90ab-cdef12345617",
+      "id": "35b6e34d-6b5c-4558-8ca2-3dbb12c96c35",
       "name": "Show BOM & Complete",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2440,
-        500
+        4800,
+        2064
       ]
     },
     {
       "parameters": {
-        "model": "glm-4.7",
+        "model": "llama-3.3-70b-versatile",
         "options": {
-          "baseURL": "https://api.z.ai/api/paas/v4"
+          "temperature": 1
         }
       },
-      "id": "openai-model-parse",
-      "name": "OpenAI Chat Model (Parse)",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
+      "id": "b20409d4-b85c-4110-89ab-d187dd01e375",
+      "name": "Groq Chat Model (Parse)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
       "position": [
-        1040,
-        400
+        2800,
+        1760
       ],
       "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
+        "groqApi": {
+          "id": "mnE1aODAiuKaNYpS",
+          "name": "Groq account"
         }
       }
     },
     {
       "parameters": {
-        "model": "glm-4.7",
+        "model": "llama-3.3-70b-versatile",
         "options": {
-          "baseURL": "https://api.z.ai/api/paas/v4"
+          "temperature": 0.7
         }
       },
-      "id": "openai-model-recommend",
-      "name": "OpenAI Chat Model (Recommend)",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
+      "id": "65c84bd9-0035-4f21-acec-d57180a89b8e",
+      "name": "Groq Chat Model (Recommend)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
       "position": [
-        2040,
-        600
+        4400,
+        1968
       ],
       "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
+        "groqApi": {
+          "id": "mnE1aODAiuKaNYpS",
+          "name": "Groq account"
         }
       }
     }
   ],
+  "pinData": {},
   "connections": {
     "Chat Trigger": {
       "main": [
@@ -318,14 +410,14 @@
       "main": [
         [
           {
-            "node": "Build AI Prompt",
+            "node": "Get Pending Approval from DB",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Handle Approval",
+            "node": "Build AI Prompt",
             "type": "main",
             "index": 0
           }
@@ -369,18 +461,29 @@
       "main": [
         [
           {
-            "node": "Show Diagram & Wait Approval",
+            "node": "Save Pending Approval to DB",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Show Diagram & Wait Approval": {
+    "Save Pending Approval to DB": {
       "main": [
         [
           {
-            "node": "Chat Trigger",
+            "node": "Return Diagram Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Approval from DB": {
+      "main": [
+        [
+          {
+            "node": "Handle Approval",
             "type": "main",
             "index": 0
           }
@@ -388,6 +491,28 @@
       ]
     },
     "Handle Approval": {
+      "main": [
+        [
+          {
+            "node": "Is Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Approved?": {
+      "main": [
+        [
+          {
+            "node": "Mark Approval in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Approval in DB": {
       "main": [
         [
           {
@@ -402,36 +527,18 @@
       "main": [
         [
           {
-            "node": "Split Searches (3 per batch)",
+            "node": "Search Components (API)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Split Searches (3 per batch)": {
+    "Search Components (API)": {
       "main": [
-        [
-          {
-            "node": "Search Components (Real)",
-            "type": "main",
-            "index": 0
-          }
-        ],
         [
           {
             "node": "Aggregate All Components",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Search Components (Real)": {
-      "main": [
-        [
-          {
-            "node": "Split Searches (3 per batch)",
             "type": "main",
             "index": 0
           }
@@ -482,7 +589,7 @@
         ]
       ]
     },
-    "OpenAI Chat Model (Parse)": {
+    "Groq Chat Model (Parse)": {
       "ai_languageModel": [
         [
           {
@@ -493,7 +600,7 @@
         ]
       ]
     },
-    "OpenAI Chat Model (Recommend)": {
+    "Groq Chat Model (Recommend)": {
       "ai_languageModel": [
         [
           {
@@ -505,17 +612,14 @@
       ]
     }
   },
-  "pinData": {},
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
-  "tags": [
-    "hardware-pipeline",
-    "phase-1",
-    "universal"
-  ],
-  "triggerCount": 0,
-  "updatedAt": "2026-02-02T00:00:00.000Z",
-  "versionId": "2.0"
+  "versionId": "c2050849-8add-4524-a2be-a08083013df5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0d5fa7fc67e5fa71768bf9e2cd6a9196f2924d9c32385655445cb5ed528a58c6"
+  },
+  "tags": []
 }

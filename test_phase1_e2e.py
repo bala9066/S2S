@@ -176,7 +176,7 @@ class Phase1E2ETester:
                 'Validate Input & Detect Type',
                 'Build AI Prompt',
                 'Generate Block Diagram',
-                'Search Components (Real)',
+                'Search Components (API)',
                 'Generate BOM'
             ]
 

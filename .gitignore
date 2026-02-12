@@ -97,3 +97,18 @@ htmlcov/
 *key*
 *token*
 !.env.example
+
+# Debug and temporary files
+*.txt
+*.json
+!*.json.example
+!Phase1_Complete_Workflow_READY_TO_IMPORT.json
+debug_js.js
+make_test.js
+test_syntax.js
+extracted_code.js
+exported_workflow.json
+parsed_req.json
+.claude/
+CLAUDE.md
+nul

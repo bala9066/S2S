@@ -157,159 +157,180 @@ class DatabaseManager:
 
 
 class DigiKeyScraper:
-    """Scrapes DigiKey for component data"""
-    
-    def __init__(self, browser: Browser):
-        self.browser = browser
+    """Scrapes DigiKey for component data using URL-based search"""
+
+    def __init__(self, context):
+        self.context = context
         self.base_url = 'https://www.digikey.com'
-    
+
     async def scrape(self, search_term: str, category: str) -> List[Dict]:
-        """Scrape DigiKey for components"""
+        """Scrape DigiKey for components using direct URL search"""
         logger.info(f"🔍 DigiKey: Searching for '{search_term}'")
-        
-        page = await self.browser.new_page()
+
+        page = await self.context.new_page()
         results = []
-        
+
         try:
-            # Navigate to DigiKey
-            await page.goto(self.base_url, timeout=30000, wait_until='domcontentloaded')
-            logger.debug("DigiKey homepage loaded")
-            
+            # Use URL-based search (more reliable than form interaction)
+            import urllib.parse
+            encoded_term = urllib.parse.quote(search_term)
+            search_url = f"{self.base_url}/en/products/result?keywords={encoded_term}"
+
+            logger.debug(f"DigiKey search URL: {search_url}")
+            await page.goto(search_url, timeout=45000, wait_until='domcontentloaded')
+            logger.debug("DigiKey search results page loaded")
+
             # Handle cookie consent if present
             try:
-                cookie_button = page.locator('button:has-text("Accept All Cookies")')
-                if await cookie_button.is_visible(timeout=2000):
+                cookie_button = page.locator('button:has-text("Accept"), button:has-text("Accept All")')
+                if await cookie_button.is_visible(timeout=3000):
                     await cookie_button.click()
+                    await page.wait_for_timeout(1000)
                     logger.debug("Accepted cookies")
             except:
                 pass
-            
-            # Search
-            search_selectors = [
-                'input[id="searchInput"]',
-                'input[name="keywords"]',
-                'input[placeholder*="Search"]',
-                '#search-input',
-                '.search-input'
+
+            # Wait for page to stabilize
+            await page.wait_for_timeout(2000)
+
+            # Try multiple result table selectors (DigiKey uses data-testid attributes)
+            product_selectors = [
+                '[data-testid="search-results-table"] tbody tr',
+                'table[data-testid="data-table"] tbody tr',
+                '[data-testid="product-table"] tbody tr',
+                'table.MuiTable-root tbody tr',
+                '#data-table-0 tbody tr',
+                '.product-table tbody tr',
+                'table tbody tr:has(td)'
             ]
-            
-            search_input = None
-            for selector in search_selectors:
+
+            products = []
+            for selector in product_selectors:
                 try:
-                    search_input = page.locator(selector).first
-                    if await search_input.is_visible(timeout=2000):
+                    await page.wait_for_selector(selector, timeout=5000)
+                    products = await page.locator(selector).all()
+                    if len(products) > 0:
+                        logger.debug(f"Found products using selector: {selector}")
                         break
                 except:
                     continue
-            
-            if not search_input:
-                logger.warning("⚠️ DigiKey: Could not find search input")
-                return results
-            
-            await search_input.fill(search_term)
-            await search_input.press('Enter')
-            logger.debug("Search submitted")
-            
-            # Wait for results
-            try:
-                await page.wait_for_selector('table.product-table, .product-list, [data-testid="product-table"]', timeout=15000)
-                logger.debug("Results loaded")
-            except PlaywrightTimeout:
-                logger.warning("⚠️ DigiKey: Timeout waiting for results")
-                return results
-            
-            # Extract product rows
-            product_selectors = [
-                'tr[itemtype*="Product"]',
-                'tr.product-row',
-                '[data-testid="product-row"]',
-                'table.product-table tbody tr'
-            ]
-            
-            products = []
-            for selector in product_selectors:
-                products = await page.locator(selector).all()
-                if products:
-                    break
-            
-            logger.info(f"Found {len(products)} product rows")
-            
+
+            if not products:
+                # Try extracting from any visible product cards
+                logger.debug("Trying card-based selectors...")
+                card_selectors = [
+                    '[data-testid="product-card"]',
+                    '.product-card',
+                    'article[data-product]'
+                ]
+                for selector in card_selectors:
+                    try:
+                        products = await page.locator(selector).all()
+                        if products:
+                            break
+                    except:
+                        continue
+
+            logger.info(f"Found {len(products)} product items")
+
             # Process each product (limit to top 5)
             for i, product_row in enumerate(products[:5]):
                 try:
-                    component = await self._extract_digikey_product(product_row, category)
-                    if component and component['part_number']:
+                    component = await self._extract_digikey_product(product_row, page, category)
+                    if component and component['part_number'] and component['part_number'] != 'Unknown':
                         results.append(component)
                         logger.debug(f"Extracted: {component['part_number']}")
                 except Exception as e:
                     logger.warning(f"Failed to extract product {i+1}: {e}")
                     continue
-            
+
             logger.info(f"✅ DigiKey: Extracted {len(results)} components")
-            
+
         except Exception as e:
             logger.error(f"❌ DigiKey scraping error: {e}")
-        
+
         finally:
             await page.close()
-        
+
         return results
     
-    async def _extract_digikey_product(self, row, category: str) -> Optional[Dict]:
+    async def _extract_digikey_product(self, row, page, category: str) -> Optional[Dict]:
         """Extract product details from a DigiKey row"""
         try:
-            # Part number
-            part_selectors = [
-                '[data-testid="product-mfr-part-number"]',
-                '.product-mfr-part-number',
-                '[itemprop="productID"]',
-                'td:has-text("Part Number")'
-            ]
-            part_number = await self._get_text(row, part_selectors)
-            
-            # Manufacturer
-            mfg_selectors = [
-                '[data-testid="product-manufacturer"]',
-                '.manufacturer',
-                '[itemprop="manufacturer"]'
-            ]
-            manufacturer = await self._get_text(row, mfg_selectors)
-            
-            # Description
-            desc_selectors = [
-                '[data-testid="product-description"]',
-                '.product-description',
-                '[itemprop="description"]'
-            ]
-            description = await self._get_text(row, desc_selectors)
-            
-            # Price
-            price_selectors = [
-                '[data-testid="price-unit"]',
-                '.price-unit',
-                '[itemprop="price"]',
-                '.product-dollars'
-            ]
-            price = await self._get_text(row, price_selectors)
-            
-            # Stock/Availability
-            stock_selectors = [
-                '[data-testid="product-quantity"]',
-                '.product-stock',
-                '.availability'
-            ]
-            stock = await self._get_text(row, stock_selectors)
-            
-            # Datasheet link
+            # Get all cells in the row
+            cells = await row.locator('td').all()
+
+            part_number = ''
+            manufacturer = ''
+            description = ''
+            price = ''
+            stock = ''
             datasheet_url = ''
-            try:
-                datasheet_link = row.locator('a:has-text("Datasheet"), a:has-text("PDF")').first
-                datasheet_url = await datasheet_link.get_attribute('href', timeout=1000)
-                if datasheet_url and not datasheet_url.startswith('http'):
-                    datasheet_url = self.base_url + datasheet_url
-            except:
-                pass
-            
+
+            # Try to extract from cells by content pattern
+            for cell in cells:
+                try:
+                    text = await cell.text_content(timeout=1000)
+                    text = text.strip() if text else ''
+
+                    # Skip empty cells
+                    if not text:
+                        continue
+
+                    # Check for links (part numbers usually are links)
+                    links = await cell.locator('a').all()
+                    for link in links:
+                        href = await link.get_attribute('href', timeout=500)
+                        link_text = await link.text_content(timeout=500)
+                        link_text = link_text.strip() if link_text else ''
+
+                        # Datasheet link
+                        if href and ('datasheet' in href.lower() or '.pdf' in href.lower()):
+                            datasheet_url = href if href.startswith('http') else self.base_url + href
+                        # Part number link (to product detail page)
+                        elif href and '/product-detail/' in href and link_text:
+                            if not part_number:
+                                part_number = link_text
+
+                    # Price pattern ($X.XX)
+                    if '$' in text and not price:
+                        import re
+                        price_match = re.search(r'\$[\d,]+\.?\d*', text)
+                        if price_match:
+                            price = price_match.group()
+
+                    # Stock pattern (numbers with comma)
+                    if text.replace(',', '').isdigit() and not stock:
+                        stock = text
+
+                except:
+                    continue
+
+            # Try specific data-testid selectors as fallback
+            if not part_number:
+                part_selectors = [
+                    '[data-testid="mfr-part-number"] a',
+                    '[data-testid="part-number"]',
+                    'a[href*="/product-detail/"]'
+                ]
+                part_number = await self._get_text(row, part_selectors)
+
+            if not manufacturer:
+                mfg_selectors = [
+                    '[data-testid="manufacturer"]',
+                    'td:nth-child(3)',
+                    '.manufacturer'
+                ]
+                manufacturer = await self._get_text(row, mfg_selectors)
+
+            if not description:
+                desc_selectors = [
+                    '[data-testid="description"]',
+                    'td:nth-child(4)',
+                    '.description'
+                ]
+                description = await self._get_text(row, desc_selectors)
+
             return {
                 'part_number': part_number or 'Unknown',
                 'manufacturer': manufacturer or 'Unknown',
@@ -322,7 +343,7 @@ class DigiKeyScraper:
                 'lifecycle_status': 'Active',
                 'source': 'DigiKey'
             }
-            
+
         except Exception as e:
             logger.warning(f"Product extraction error: {e}")
             return None
@@ -341,156 +362,194 @@ class DigiKeyScraper:
 
 
 class MouserScraper:
-    """Scrapes Mouser for component data"""
-    
-    def __init__(self, browser: Browser):
-        self.browser = browser
+    """Scrapes Mouser for component data using URL-based search"""
+
+    def __init__(self, context):
+        self.context = context
         self.base_url = 'https://www.mouser.com'
-    
+
     async def scrape(self, search_term: str, category: str) -> List[Dict]:
-        """Scrape Mouser for components"""
+        """Scrape Mouser for components using direct URL search"""
         logger.info(f"🔍 Mouser: Searching for '{search_term}'")
-        
-        page = await self.browser.new_page()
+
+        page = await self.context.new_page()
         results = []
-        
+
         try:
-            # Navigate to Mouser
-            await page.goto(self.base_url, timeout=30000, wait_until='domcontentloaded')
-            logger.debug("Mouser homepage loaded")
-            
+            # Use URL-based search (more reliable than form interaction)
+            import urllib.parse
+            encoded_term = urllib.parse.quote(search_term)
+            search_url = f"{self.base_url}/c/?q={encoded_term}"
+
+            logger.debug(f"Mouser search URL: {search_url}")
+            await page.goto(search_url, timeout=45000, wait_until='domcontentloaded')
+            logger.debug("Mouser search results page loaded")
+
             # Handle cookie consent
             try:
-                cookie_button = page.locator('button:has-text("Accept"), button:has-text("I Accept")')
-                if await cookie_button.is_visible(timeout=2000):
+                cookie_button = page.locator('button:has-text("Accept"), button:has-text("I Accept"), #onetrust-accept-btn-handler')
+                if await cookie_button.is_visible(timeout=3000):
                     await cookie_button.click()
+                    await page.wait_for_timeout(1000)
+                    logger.debug("Accepted cookies")
             except:
                 pass
-            
-            # Search
-            search_selectors = [
-                'input#SearchInput',
-                'input[name="keyword"]',
-                'input[placeholder*="Search"]'
+
+            # Wait for page to stabilize
+            await page.wait_for_timeout(2000)
+
+            # Try multiple result selectors
+            product_selectors = [
+                'table#ctl00_ContentMain_SearchResultsGrid_grid tbody tr',
+                'table.SearchResultsTable tbody tr',
+                '[data-testid="search-result-row"]',
+                '.search-results-row',
+                '#gridDiv table tbody tr',
+                'table tbody tr:has(a[href*="/ProductDetail/"])'
             ]
-            
-            search_input = None
-            for selector in search_selectors:
+
+            products = []
+            for selector in product_selectors:
                 try:
-                    search_input = page.locator(selector).first
-                    if await search_input.is_visible(timeout=2000):
+                    await page.wait_for_selector(selector, timeout=5000)
+                    products = await page.locator(selector).all()
+                    if len(products) > 0:
+                        logger.debug(f"Found products using selector: {selector}")
                         break
                 except:
                     continue
-            
-            if not search_input:
-                logger.warning("⚠️ Mouser: Could not find search input")
-                return results
-            
-            await search_input.fill(search_term)
-            await search_input.press('Enter')
-            logger.debug("Search submitted")
-            
-            # Wait for results
-            try:
-                await page.wait_for_selector('.search-result, .result-item, table.SearchResultsTable', timeout=15000)
-                logger.debug("Results loaded")
-            except PlaywrightTimeout:
-                logger.warning("⚠️ Mouser: Timeout waiting for results")
-                return results
-            
-            # Extract products
-            product_selectors = [
-                '.search-result',
-                '.result-item',
-                'table.SearchResultsTable tr[id*="row"]'
-            ]
-            
-            products = []
-            for selector in product_selectors:
-                products = await page.locator(selector).all()
-                if products:
-                    break
-            
-            logger.info(f"Found {len(products)} product rows")
-            
+
+            if not products:
+                # Try card-based selectors
+                logger.debug("Trying card-based selectors...")
+                card_selectors = [
+                    '.product-item',
+                    '[data-product-id]',
+                    'article.product'
+                ]
+                for selector in card_selectors:
+                    try:
+                        products = await page.locator(selector).all()
+                        if products:
+                            break
+                    except:
+                        continue
+
+            logger.info(f"Found {len(products)} product items")
+
             # Process each product (limit to top 5)
             for i, product_row in enumerate(products[:5]):
                 try:
-                    component = await self._extract_mouser_product(product_row, category)
-                    if component and component['part_number']:
+                    component = await self._extract_mouser_product(product_row, page, category)
+                    if component and component['part_number'] and component['part_number'] != 'Unknown':
                         results.append(component)
                         logger.debug(f"Extracted: {component['part_number']}")
                 except Exception as e:
                     logger.warning(f"Failed to extract product {i+1}: {e}")
                     continue
-            
+
             logger.info(f"✅ Mouser: Extracted {len(results)} components")
-            
+
         except Exception as e:
             logger.error(f"❌ Mouser scraping error: {e}")
-        
+
         finally:
             await page.close()
-        
+
         return results
     
-    async def _extract_mouser_product(self, row, category: str) -> Optional[Dict]:
+    async def _extract_mouser_product(self, row, page, category: str) -> Optional[Dict]:
         """Extract product details from a Mouser row"""
         try:
-            # Part number
-            part_selectors = [
-                '.mfrPartNumber',
-                '[data-part-number]',
-                'td.mfgNumber'
-            ]
-            part_number = await self._get_text(row, part_selectors)
-            
-            # Manufacturer
-            mfg_selectors = [
-                '.manufacturer',
-                '[data-manufacturer]',
-                'td.manufacturer'
-            ]
-            manufacturer = await self._get_text(row, mfg_selectors)
-            
-            # Description
-            desc_selectors = [
-                '.description',
-                '[data-description]',
-                'td.mfrDescription'
-            ]
-            description = await self._get_text(row, desc_selectors)
-            
-            # Price
-            price_selectors = [
-                '.price',
-                '[data-price]',
-                'td.PriceBreaks'
-            ]
-            price = await self._get_text(row, price_selectors)
-            
-            # Stock
-            stock_selectors = [
-                '.availability',
-                '[data-stock]',
-                'td.availability'
-            ]
-            stock = await self._get_text(row, stock_selectors)
-            
+            # Get all cells in the row
+            cells = await row.locator('td').all()
+
+            part_number = ''
+            manufacturer = ''
+            description = ''
+            price = ''
+            stock = ''
+            datasheet_url = ''
+
+            # Try to extract from cells by content pattern
+            for cell in cells:
+                try:
+                    text = await cell.text_content(timeout=1000)
+                    text = text.strip() if text else ''
+
+                    # Skip empty cells
+                    if not text:
+                        continue
+
+                    # Check for links
+                    links = await cell.locator('a').all()
+                    for link in links:
+                        href = await link.get_attribute('href', timeout=500)
+                        link_text = await link.text_content(timeout=500)
+                        link_text = link_text.strip() if link_text else ''
+
+                        # Datasheet link
+                        if href and ('datasheet' in href.lower() or '.pdf' in href.lower()):
+                            datasheet_url = href if href.startswith('http') else self.base_url + href
+                        # Part number link (to product detail page)
+                        elif href and '/ProductDetail/' in href and link_text:
+                            if not part_number:
+                                part_number = link_text
+
+                    # Price pattern ($X.XX)
+                    if '$' in text and not price:
+                        import re
+                        price_match = re.search(r'\$[\d,]+\.?\d*', text)
+                        if price_match:
+                            price = price_match.group()
+
+                    # Stock pattern (In Stock, or numbers)
+                    if 'in stock' in text.lower() or 'available' in text.lower():
+                        stock = text
+                    elif text.replace(',', '').isdigit() and not stock:
+                        stock = text
+
+                except:
+                    continue
+
+            # Try specific selectors as fallback
+            if not part_number:
+                part_selectors = [
+                    'a[href*="/ProductDetail/"]',
+                    '.mfrPartNumber',
+                    '[data-part-number]'
+                ]
+                part_number = await self._get_text(row, part_selectors)
+
+            if not manufacturer:
+                mfg_selectors = [
+                    'td:nth-child(2)',
+                    '.manufacturer',
+                    '[data-manufacturer]'
+                ]
+                manufacturer = await self._get_text(row, mfg_selectors)
+
+            if not description:
+                desc_selectors = [
+                    'td:nth-child(3)',
+                    '.description',
+                    '[data-description]'
+                ]
+                description = await self._get_text(row, desc_selectors)
+
             return {
                 'part_number': part_number or 'Unknown',
                 'manufacturer': manufacturer or 'Unknown',
                 'description': description or 'No description',
                 'category': category,
-                'datasheet_url': '',
+                'datasheet_url': datasheet_url,
                 'specifications': {},
                 'pricing': {'unit_price': price or '$0.00'},
                 'availability': {'stock': stock or 'Unknown'},
                 'lifecycle_status': 'Active',
                 'source': 'Mouser'
             }
-            
+
         except Exception as e:
             logger.warning(f"Product extraction error: {e}")
             return None
@@ -508,15 +567,114 @@ class MouserScraper:
         return ''
 
 
+def generate_demo_components(search_term: str, category: str) -> List[Dict]:
+    """Generate realistic demo components when real scraping fails"""
+    logger.info(f"🎭 Generating demo components for '{search_term}' ({category})")
+
+    # Common component patterns by category
+    demo_data = {
+        'processor': [
+            {'part': 'STM32F407VGT6', 'mfg': 'STMicroelectronics', 'desc': 'ARM Cortex-M4 MCU, 168MHz, 1MB Flash, 192KB RAM', 'price': '$12.50'},
+            {'part': 'STM32F446RET6', 'mfg': 'STMicroelectronics', 'desc': 'ARM Cortex-M4 MCU, 180MHz, 512KB Flash, 128KB RAM', 'price': '$8.75'},
+            {'part': 'ATSAMD51J19A-AU', 'mfg': 'Microchip', 'desc': 'ARM Cortex-M4F MCU, 120MHz, 512KB Flash', 'price': '$6.20'},
+        ],
+        'fpga': [
+            {'part': 'XC7A35T-1CSG324C', 'mfg': 'AMD/Xilinx', 'desc': 'Artix-7 FPGA, 33K Logic Cells, 324-BGA', 'price': '$45.00'},
+            {'part': 'XC7A100T-2FGG484I', 'mfg': 'AMD/Xilinx', 'desc': 'Artix-7 FPGA, 101K Logic Cells, 484-FBGA', 'price': '$85.00'},
+            {'part': 'XC7A200T-2FBG484I', 'mfg': 'AMD/Xilinx', 'desc': 'Artix-7 FPGA, 215K Logic Cells, 484-FBGA', 'price': '$120.00'},
+            {'part': 'LFE5U-25F-6BG256C', 'mfg': 'Lattice', 'desc': 'ECP5 FPGA, 24K LUTs, 256-BGA', 'price': '$12.00'},
+        ],
+        'power_regulator': [
+            {'part': 'LM2596S-5.0', 'mfg': 'Texas Instruments', 'desc': '3A Step-Down Voltage Regulator, 5V Output', 'price': '$2.50'},
+            {'part': 'AP2112K-3.3TRG1', 'mfg': 'Diodes Inc', 'desc': '600mA LDO Regulator, 3.3V Output', 'price': '$0.35'},
+            {'part': 'TPS63001DRCR', 'mfg': 'Texas Instruments', 'desc': 'Buck-Boost Converter, 1.8A, Adjustable', 'price': '$3.20'},
+            {'part': 'TPS65263RHBR', 'mfg': 'Texas Instruments', 'desc': 'Triple Buck Converter, 1.0V/1.8V/3.3V for FPGA', 'price': '$4.50'},
+            {'part': 'LMR36015ADDAR', 'mfg': 'Texas Instruments', 'desc': 'Buck Converter, 36V Input, 1.5A, Adjustable', 'price': '$2.80'},
+        ],
+        'amplifier': [
+            {'part': 'ADL5523ACPZ', 'mfg': 'Analog Devices', 'desc': 'RF/IF Gain Block, 400MHz-4GHz, 21.5dB Gain', 'price': '$8.50'},
+            {'part': 'HMC580ALC3B', 'mfg': 'Analog Devices', 'desc': 'GaAs pHEMT MMIC Driver Amp, DC-6GHz, 13dB Gain', 'price': '$12.00'},
+            {'part': 'SKY67159-396LF', 'mfg': 'Skyworks', 'desc': 'Wideband LNA, 0.7-3.8GHz, 20dB Gain, 0.6dB NF', 'price': '$2.80'},
+            {'part': 'TGF2965-SM', 'mfg': 'Qorvo', 'desc': 'GaN HEMT, DC-18GHz, 10W, 28V, 65% PAE', 'price': '$85.00'},
+            {'part': 'TGA2594-SM', 'mfg': 'Qorvo', 'desc': 'GaN PA, 2-18GHz, 4W, 22dB Gain', 'price': '$120.00'},
+            {'part': 'HMC1131', 'mfg': 'Analog Devices', 'desc': 'GaAs pHEMT Driver, 6-18GHz, 21dB Gain, 1W', 'price': '$45.00'},
+        ],
+        'rf_component': [
+            {'part': 'ADL5801ACPZ', 'mfg': 'Analog Devices', 'desc': 'Wideband Active Mixer, 10MHz-6GHz, 0.4dB NF', 'price': '$15.00'},
+            {'part': 'HMC558ALC3B', 'mfg': 'Analog Devices', 'desc': 'Double-Balanced Mixer, 5.5-14GHz', 'price': '$18.00'},
+            {'part': 'BFCN-5500+', 'mfg': 'Mini-Circuits', 'desc': 'Bandpass Filter, 4.9-6.2GHz, LTCC', 'price': '$3.50'},
+            {'part': 'QCN-19D+', 'mfg': 'Mini-Circuits', 'desc': 'Directional Coupler, 5-20GHz, 20dB Coupling', 'price': '$6.50'},
+            {'part': 'PE42525MLBA-Z', 'mfg': 'pSemi', 'desc': 'RF Switch, SPDT, DC-40GHz, 0.6dB IL', 'price': '$4.20'},
+            {'part': 'HMC321ALP4E', 'mfg': 'Analog Devices', 'desc': 'GaAs MMIC SP4T Switch, DC-8GHz', 'price': '$8.00'},
+            {'part': 'TQL9065', 'mfg': 'Qorvo', 'desc': 'Ultra-Low Noise LNA, 5-18GHz, 1.2dB NF, 18dB Gain', 'price': '$12.00'},
+        ],
+        'interface': [
+            {'part': 'FT232RL-REEL', 'mfg': 'FTDI', 'desc': 'USB to UART IC, USB 2.0 Full Speed', 'price': '$4.50'},
+            {'part': 'MAX3232ECPE+', 'mfg': 'Maxim/Analog', 'desc': 'RS-232 Transceiver, 3.0V-5.5V', 'price': '$2.80'},
+            {'part': 'SN65HVD230DR', 'mfg': 'Texas Instruments', 'desc': 'CAN Bus Transceiver, 3.3V', 'price': '$1.20'},
+            {'part': 'AD9744ARUZ', 'mfg': 'Analog Devices', 'desc': '14-bit DAC, 210 MSPS, 3.3V', 'price': '$18.00'},
+            {'part': 'AD9235BRUZ-65', 'mfg': 'Analog Devices', 'desc': '12-bit ADC, 65 MSPS, 3.3V', 'price': '$12.50'},
+        ],
+        'connector': [
+            {'part': '10118192-0001LF', 'mfg': 'Amphenol', 'desc': 'USB Micro-B Receptacle, SMD', 'price': '$0.45'},
+            {'part': '0022035045', 'mfg': 'Molex', 'desc': '4-Pin Header, 2.54mm Pitch', 'price': '$0.25'},
+            {'part': '132322-11', 'mfg': 'Amphenol', 'desc': 'SMA Connector, Female, PCB Mount, 50 Ohm', 'price': '$2.50'},
+            {'part': '901-10511-2', 'mfg': 'Amphenol', 'desc': 'SMA Connector, Male, Edge-Mount, 18GHz', 'price': '$3.80'},
+        ],
+        'oscillator': [
+            {'part': 'ECS-240-8-36-CKM-TR', 'mfg': 'ECS', 'desc': '24MHz Crystal, 8pF, HC49/SMD', 'price': '$0.35'},
+            {'part': 'ABM8-25.000MHZ-B2-T', 'mfg': 'Abracon', 'desc': '25MHz Crystal, 10pF, 3.2x2.5mm', 'price': '$0.50'},
+            {'part': 'SIT8008BI-82-33E-100.000000G', 'mfg': 'SiTime', 'desc': 'MEMS Oscillator, 100MHz, 3.3V, 25ppm', 'price': '$2.25'},
+            {'part': 'ASTX-H11-100.000MHZ-T', 'mfg': 'Abracon', 'desc': 'TCXO, 100MHz, 2.5ppm, 3.3V', 'price': '$5.50'},
+        ],
+        'power_amplifier': [
+            {'part': 'TGF2965-SM', 'mfg': 'Qorvo', 'desc': 'GaN HEMT, DC-18GHz, 10W, 28V, 65% PAE', 'price': '$85.00'},
+            {'part': 'TGA2594-SM', 'mfg': 'Qorvo', 'desc': 'GaN PA, 2-18GHz, 4W, 22dB Gain', 'price': '$120.00'},
+            {'part': 'CMPA0060025D', 'mfg': 'Wolfspeed/Cree', 'desc': 'GaN HEMT, DC-6GHz, 25W, 28V', 'price': '$95.00'},
+        ],
+        'power_input': [
+            {'part': 'KPPX-3P', 'mfg': 'Kycon', 'desc': 'DC Power Jack, 2.5mm, Panel Mount', 'price': '$1.20'},
+            {'part': 'PJ-037A', 'mfg': 'CUI Devices', 'desc': 'DC Barrel Jack, 2.1mm, SMD', 'price': '$0.85'},
+        ]
+    }
+
+    # Find matching category or default
+    components = demo_data.get(category, demo_data.get('processor', []))
+
+    # Filter by search term if applicable
+    search_lower = search_term.lower()
+    filtered = [c for c in components if search_lower in c['part'].lower() or search_lower in c['desc'].lower()]
+
+    # If no match, return all from category
+    if not filtered:
+        filtered = components
+
+    return [
+        {
+            'part_number': c['part'],
+            'manufacturer': c['mfg'],
+            'description': c['desc'],
+            'category': category,
+            'datasheet_url': f"https://www.digikey.com/en/products/detail/{c['part'].lower().replace('-', '')}",
+            'specifications': {},
+            'pricing': {'unit_price': c['price']},
+            'availability': {'stock': 'In Stock (Demo)'},
+            'lifecycle_status': 'Active',
+            'source': 'Demo Data'
+        }
+        for c in filtered[:5]
+    ]
+
+
 async def scrape_components(search_term: str, category: str, use_cache: bool = True) -> Dict:
     """
     Main function to scrape components from DigiKey and Mouser
-    
+
     Args:
         search_term: What to search for
         category: Component category (processor, power_regulator, interface, etc.)
         use_cache: Whether to check cache first
-    
+
     Returns:
         Dict with components and metadata
     """
@@ -544,20 +702,29 @@ async def scrape_components(search_term: str, category: str, use_cache: bool = T
     all_components = []
     
     async with async_playwright() as p:
-        # Launch browser
+        # Launch browser with stealth settings
         browser = await p.chromium.launch(
             headless=True,
             args=[
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled'
             ]
         )
+
+        # Create a context with realistic user agent and viewport
+        context = await browser.new_context(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            viewport={'width': 1920, 'height': 1080},
+            locale='en-US',
+            timezone_id='America/New_York'
+        )
         
-        # Create scrapers
-        digikey = DigiKeyScraper(browser)
-        mouser = MouserScraper(browser)
+        # Create scrapers with context for stealth
+        digikey = DigiKeyScraper(context)
+        mouser = MouserScraper(context)
         
         # Run scrapers in parallel
         try:
@@ -583,17 +750,25 @@ async def scrape_components(search_term: str, category: str, use_cache: bool = T
             
         except Exception as e:
             logger.error(f"Scraping error: {e}")
-        
+
         finally:
+            await context.close()
             await browser.close()
     
-    # Save to cache
-    logger.info(f"💾 Saving {len(all_components)} components to cache")
-    for component in all_components:
-        db.save_component(component, search_term, category)
-    
+    # Fallback to demo data if scraping failed
+    use_demo = len(all_components) == 0
+    if use_demo:
+        logger.warning("⚠️ Real scraping returned 0 results, using demo data fallback")
+        all_components = generate_demo_components(search_term, category)
+
+    # Save to cache (only real components, not demo)
+    if not use_demo:
+        logger.info(f"💾 Saving {len(all_components)} components to cache")
+        for component in all_components:
+            db.save_component(component, search_term, category)
+
     db.disconnect()
-    
+
     # Return results
     result = {
         'cache_hit': False,
@@ -603,11 +778,13 @@ async def scrape_components(search_term: str, category: str, use_cache: bool = T
         'total_found': len(all_components),
         'sources': {
             'digikey': len([c for c in all_components if c['source'] == 'DigiKey']),
-            'mouser': len([c for c in all_components if c['source'] == 'Mouser'])
-        }
+            'mouser': len([c for c in all_components if c['source'] == 'Mouser']),
+            'demo': len([c for c in all_components if c['source'] == 'Demo Data'])
+        },
+        'demo_mode': use_demo
     }
-    
-    logger.info(f"✅ Search complete: {len(all_components)} components found")
+
+    logger.info(f"✅ Search complete: {len(all_components)} components found" + (" (demo mode)" if use_demo else ""))
     return result
 
 

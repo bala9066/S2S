@@ -86,13 +86,23 @@ class MouserAPI:
                 price_breaks_data = part.get('PriceBreaks', [])
                 if price_breaks_data:
                     # Get unit price (first break)
-                    unit_price = price_breaks_data[0].get('Price', '0')
-                    # Remove currency symbol
-                    unit_price_clean = unit_price.replace('$', '').replace(',', '')
+                    unit_price_raw = price_breaks_data[0].get('Price', '0')
+                    # Detect currency: ₹ = INR, $ = USD
+                    is_inr = '₹' in str(unit_price_raw) or 'INR' in str(unit_price_raw).upper()
+                    # Strip ALL non-numeric chars except . for decimal
+                    import re
+                    price_digits = re.sub(r'[^\d.]', '', str(unit_price_raw))
                     try:
-                        unit_price_float = float(unit_price_clean)
+                        unit_price_float = float(price_digits) if price_digits else 0.0
+                        # Convert INR to USD (approximate rate)
+                        if is_inr and unit_price_float > 0:
+                            unit_price_usd = round(unit_price_float / 83.0, 2)
+                        else:
+                            unit_price_usd = unit_price_float
                         pricing = {
-                            'unit_price': f'${unit_price_float:.2f}',
+                            'unit_price': f'${unit_price_usd:.2f}',
+                            'original_price': str(unit_price_raw),
+                            'currency': 'INR' if is_inr else 'USD',
                             'min_qty': price_breaks_data[0].get('Quantity', 1),
                             'price_breaks': [
                                 {
@@ -103,7 +113,7 @@ class MouserAPI:
                             ]
                         }
                     except:
-                        pricing = {'unit_price': unit_price, 'min_qty': 1}
+                        pricing = {'unit_price': '$0.00', 'original_price': str(unit_price_raw), 'min_qty': 1}
 
                 # Extract availability
                 availability = {
